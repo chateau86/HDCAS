@@ -5,5 +5,7 @@ Hard Drive Condition Alert System
 (In no particular order)
 - Server
     - Python3
-    - Flask
     - Direnv
+    - Flask
+    - Flask-sqlalchemy
+
