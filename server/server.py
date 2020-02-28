@@ -12,4 +12,4 @@ app.config["DEBUG"] = True
 def home():
     return "<h1>It's alive!!!</h1>"
 
-app.run()
+app.run(host='0.0.0.0')  # YOLO
