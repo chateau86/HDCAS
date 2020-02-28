@@ -9,8 +9,6 @@ import flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 
-import simplejson
-
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True,
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
@@ -24,6 +22,14 @@ print("Server init ok")
 print("DB URL: "+os.environ['DB_URL'])
 
 
+# https://stackoverflow.com/questions/7102754/jsonify-a-sqlalchemy-result-set-in-flask
+def dump_datetime(value):
+    """Deserialize datetime object into string form for JSON processing."""
+    if value is None:
+        return None
+    return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
+
+
 class test_message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     msg = db.Column(db.String())
@@ -31,6 +37,14 @@ class test_message(db.Model):
 
     def __repr__(self):
         return str(self.id) + " " + str(self.timestamp) + ": " + self.msg
+
+    @property
+    def serialize(self):
+        return {
+            'id': self.id,
+            'timestamp': dump_datetime(self.timestamp),
+            'message': self.msg,
+        }
 
 
 @app.route('/', methods=['GET'])
@@ -43,9 +57,9 @@ def read_msg():
     messages = db.session \
         .query(test_message) \
         .order_by(test_message.timestamp) \
-        .fetchall()
+        .all()
     print(messages)
-    return flask.jsonify(messages)
+    return flask.jsonify(json_list=[i.serialize for i in messages])
 
 
 @app.route('/send', methods=['POST'])
