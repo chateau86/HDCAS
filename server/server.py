@@ -14,10 +14,13 @@ app.config["DEBUG"] = True,
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
 
 db = SQLAlchemy(app)
-db.create_all()  # Will not overwrite existing table per https://docs.sqlalchemy.org/en/13/core/metadata.html#sqlalchemy.schema.MetaData.create_all
+db.create_all()  
+# Will not overwrite existing table per
+# https://docs.sqlalchemy.org/en/13/core/metadata.html#sqlalchemy.schema.MetaData.create_all
 
 print("Server init ok")
 print("DB URL: "+os.environ['DB_URL'])
+
 
 class test_message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -25,15 +28,23 @@ class test_message(db.Model):
     timestamp = db.Column(db.DateTime(timezone=False), default=datetime.utcnow)
 
     def __repr__(self):
-        return self.id + " "+ self.timestamp + ": " + self.msg
+        return self.id + " " + self.timestamp + ": " + self.msg
+
 
 @app.route('/', methods=['GET'])
 def home():
     return "<h1>It's alive!!!</h1>"
 
+
 @app.route('/msg', methods=['GET'])
 def read_msg():
-    return flask.jsonify(db.session.query(test_message).order_by(test_message.timestamp))
+    return flask.jsonify(
+            db.session
+            .query(test_message)
+            .order_by(test_message.timestamp)
+            .all()
+    )
+
 
 @app.route('/send', methods=['POST'])
 def put_test_msg():
