@@ -38,7 +38,7 @@ def home():
 
 @app.route('/msg', methods=['GET'])
 def read_msg():
-    return flask.jsonify(
+    return (
             db.session
             .query(test_message)
             .order_by(test_message.timestamp)
