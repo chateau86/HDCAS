@@ -19,9 +19,9 @@ print("Server init ok")
 print("DB URL: "+os.environ['DB_URL'])
 
 class test_message(db.Model):
-    id = db.Columns(db.Integer, primary_key=True)
-    msg = db.Columns(db.String())
-    timestamp = db.Columns(db.DateTime(timezone=False), default=datetime.utcnow)
+    id = db.Column(db.Integer, primary_key=True)
+    msg = db.Column(db.String())
+    timestamp = db.Column(db.DateTime(timezone=False), default=datetime.utcnow)
 
     def __repr__(self):
         return self.id + " "+ self.timestamp + ": " + self.msg
