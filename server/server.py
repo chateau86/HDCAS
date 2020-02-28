@@ -15,14 +15,13 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
 
 db = SQLAlchemy(app)
 
-# Will not overwrite existing table per
-# https://docs.sqlalchemy.org/en/13/core/metadata.html#sqlalchemy.schema.MetaData.create_all
 
 print("Server init ok")
 print("DB URL: "+os.environ['DB_URL'])
 
 
 # https://stackoverflow.com/questions/7102754/jsonify-a-sqlalchemy-result-set-in-flask
+# Python can't even serialize DateTime by itself. WTF??
 def dump_datetime(value):
     """Deserialize datetime object into string form for JSON processing."""
     if value is None:
@@ -71,4 +70,7 @@ def put_test_msg():
     return "<h1>Msg recieved</h1>"
 
 
+# update the schema
+# Will not overwrite existing table per
+# https://docs.sqlalchemy.org/en/13/core/metadata.html#sqlalchemy.schema.MetaData.create_all
 db.create_all()
