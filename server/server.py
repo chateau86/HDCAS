@@ -14,7 +14,7 @@ app.config["DEBUG"] = True,
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
 
 db = SQLAlchemy(app)
-db.create_all()  
+
 # Will not overwrite existing table per
 # https://docs.sqlalchemy.org/en/13/core/metadata.html#sqlalchemy.schema.MetaData.create_all
 
@@ -53,3 +53,6 @@ def put_test_msg():
     db.session.add(test_message(msg=msg))
     db.session.commit()
     return "<h1>Msg recieved</h1>"
+
+
+db.create_all()
