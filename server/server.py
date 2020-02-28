@@ -14,6 +14,7 @@ app.config["DEBUG"] = True,
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
 
 db = SQLAlchemy(app)
+db.create_all()  # Will not overwrite existing table per https://docs.sqlalchemy.org/en/13/core/metadata.html#sqlalchemy.schema.MetaData.create_all
 
 print("Server init ok")
 print("DB URL: "+os.environ['DB_URL'])
@@ -32,9 +33,9 @@ def home():
 
 @app.route('/msg', methods=['GET'])
 def read_msg():
-    return "<h1>Messages:</h1>"
+    return flask.jsonify(db.session.query(test_message).order_by(test_message.timestamp))
 
-@app.route('/send/', methods=['POST'])
+@app.route('/send', methods=['POST'])
 def put_test_msg():
     msg = request.form["msg"]
     print("Got msg: " + msg)
