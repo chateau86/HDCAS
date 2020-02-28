@@ -40,12 +40,12 @@ def home():
 
 @app.route('/msg', methods=['GET'])
 def read_msg():
-    return simplejson.dumps(
-            db.session
-            .query(test_message)
-            .order_by(test_message.timestamp)
-            .all()
-    )
+    messages = db.session \
+        .query(test_message) \
+        .order_by(test_message.timestamp) \
+        .all()
+    print(messages)
+    return simplejson.dumps(messages)
 
 
 @app.route('/send', methods=['POST'])

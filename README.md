@@ -8,4 +8,5 @@ Hard Drive Condition Alert System
     - Direnv
     - Flask
     - Flask-sqlalchemy
+    - simplejson
 
