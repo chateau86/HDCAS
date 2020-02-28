@@ -9,6 +9,8 @@ import flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 
+import simplejson
+
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True,
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
@@ -38,7 +40,7 @@ def home():
 
 @app.route('/msg', methods=['GET'])
 def read_msg():
-    return (
+    return simplejson.dumps(
             db.session
             .query(test_message)
             .order_by(test_message.timestamp)
