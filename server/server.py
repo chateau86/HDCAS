@@ -30,7 +30,7 @@ class test_message(db.Model):
     timestamp = db.Column(db.DateTime(timezone=False), default=datetime.utcnow)
 
     def __repr__(self):
-        return self.id + " " + self.timestamp + ": " + self.msg
+        return str(self.id) + " " + str(self.timestamp) + ": " + self.msg
 
 
 @app.route('/', methods=['GET'])
@@ -43,9 +43,9 @@ def read_msg():
     messages = db.session \
         .query(test_message) \
         .order_by(test_message.timestamp) \
-        .all()
+        .fetchall()
     print(messages)
-    return simplejson.dumps(messages)
+    return flask.jsonify(messages)
 
 
 @app.route('/send', methods=['POST'])
