@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# run `flask run --host=0.0.0.0`
+
 print("Server code goes here")
 
 import flask
