@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
 from tkinter import Tk, Frame, Listbox, Scrollbar, Label, Button
+from pySMART import DeviceList
+import ctypes
+import os
+import sys
 
 
 class WarningItem:
@@ -70,10 +74,6 @@ class Main_window(Frame):
                      command=self.clear_data)
         btn.pack(side='left')
         btn = Button(top_controls_frame,
-                     text="Load placeholder data",
-                     command=self.do_fake_SMART_read)
-        btn.pack(side='left')
-        btn = Button(top_controls_frame,
                      text="Load SMART data",
                      command=self.do_SMART_read)
         btn.pack(side='left')
@@ -120,16 +120,12 @@ class Main_window(Frame):
         self._update_warn_box()
 
     def _drive_click_callback(self, event):
-        print(event)
         w = event.widget
-        print(w == self._drive_list)
         if len(w.curselection()) == 0:
             self.current_drive = None
             self._drive_msg.configure(text="No drive selected")
         else:
             index = int(w.curselection()[0])
-            value = w.get(index)
-            print('D: You selected item %d: "%s"' % (index, value))
             self.current_drive = self.drive_list[index]
             self._drive_msg.configure(text=str(self.current_drive.title))
         self._update_warn_box()
@@ -143,42 +139,33 @@ class Main_window(Frame):
         self._warning_msg.configure(text="No warning selected")
 
     def _warning_click_callback(self, event):
-        print(event)
         w = event.widget
-        print(w)
         if len(w.curselection()) == 0:
             # self.current_drive = None
             self._warning_msg.configure(text="No warning selected")
             return
         index = int(w.curselection()[0])
-        value = w.get(index)
-        print('W: You selected item %d: "%s"' % (index, value))
         self._warning_msg \
-            .configure(text=str(self.current_drive.warnings[index]))
+            .configure(text=str(self.current_drive.warnings[index].desc))
         return
-
-    def do_fake_SMART_read(self):
-        drive_list = [
-            DriveItem("Drive A", "SMART says ok", []),
-            DriveItem("Drive B", "SMART says not ok", [
-                WarningItem("Fire", "Drive is on fire"),
-                WarningItem("Broken", "Drive reported broken")
-            ])
-        ]
-        self._update_drive_list(drive_list)
 
     def do_SMART_read(self):
         # TODO: Actual SMART data read and stuff
-        drive_list = [
-            DriveItem("Drive A", "SMART says ok", []),
-            DriveItem("Drive B", "SMART says not ok", [
-                WarningItem("Fire", "Drive is on fire"),
-                WarningItem("Broken", "Drive reported broken")
-            ]),
-            DriveItem("Drive C", "SMART says not ok", [
-                WarningItem("Not implemented", "SMART not implemented yet"),
-            ])
-        ]
+        # TODO: Async this
+        raw_drive_list = DeviceList()
+        print(raw_drive_list)
+        drive_list = []
+        for dev in raw_drive_list.devices:
+            param_list = []
+            for attr in dev.attributes:
+                if attr is None:
+                    continue
+                param_list.append(
+                    WarningItem(attr.name, attr.name + ": " + attr.raw)
+                )
+            drive_list.append(
+                DriveItem(dev.model + ": " + dev.serial, str(dev), param_list)
+            )
         self._update_drive_list(drive_list)
 
     def clear_data(self):
@@ -187,6 +174,28 @@ class Main_window(Frame):
         self._update_drive_list(drive_list)
 
 
-root = Tk()
-app = Main_window(root)
-root.mainloop()
+if __name__ == '__main__':
+    is_windows = False
+    # Check if is admin
+    # https://stackoverflow.com/questions/1026431/cross-platform-way-to-check-admin-rights-in-a-python-script-under-windows
+    try:
+        is_admin = os.getuid() == 0
+    except AttributeError:
+        is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        is_windows = True
+    if not is_admin:
+        # https://stackoverflow.com/questions/130763/request-uac-elevation-from-within-a-python-script
+        if is_windows:
+            # relaunch as admin
+            ctypes.windll.shell32.ShellExecuteW(None,
+                                                "runas",
+                                                sys.executable,
+                                                __file__,
+                                                None, 1)
+            print("Re-launched as admin")
+            exit()
+        print("Must run as admin for smartctl usage")
+        exit()
+    root = Tk()
+    app = Main_window(root)
+    root.mainloop()
