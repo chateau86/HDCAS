@@ -10,7 +10,6 @@ Hard Drive Condition Alert System
     - Flask
     - Flask-sqlalchemy
     - simplejson
-    - [pgmigrate](https://github.com/yandex/pgmigrate)
 - Client
     - Python3
     - SmartMonTools
