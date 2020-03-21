@@ -3,17 +3,24 @@
 # run `flask run --host=0.0.0.0`
 
 import os
-from datetime import datetime
 
 import flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 
+from sqlalchemy import Column, DateTime, Enum, Integer, Text, text
+from sqlalchemy.dialects.postgresql.base import UUID
+from sqlalchemy.ext.declarative import declarative_base
+
 app = flask.Flask(__name__)
-app.config["DEBUG"] = True,
+app.config["DEBUG"] = True
+app.config['SQLALCHEMY_ECHO'] = True
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+Base = declarative_base()
+metadata = Base.metadata
 
 
 print("Server init ok")
@@ -29,21 +36,29 @@ def dump_datetime(value):
     return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
 
 
-class test_message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    msg = db.Column(db.String())
-    timestamp = db.Column(db.DateTime(timezone=False), default=datetime.utcnow)
+class Response(db.Model):
+    __tablename__ = 'responses'
 
-    def __repr__(self):
-        return str(self.id) + " " + str(self.timestamp) + ": " + self.msg
+    id = Column(Integer,
+                primary_key=True,
+                server_default=text("nextval('responses_id_seq'::regclass)"))
+    serial_number = Column(Text, nullable=False)
+    username = Column(Text, nullable=False)
+    raw_smart_json = Column(Text)
+    response_json = Column(Text)
+    drive_status = Column(Enum('active', 'retired', 'failed',
+                               name='drive_status_enum'),
+                          server_default=text("'active'::drive_status_enum"))
+    created_at = Column(DateTime, server_default=text("now()"))
 
-    @property
-    def serialize(self):
-        return {
-            'id': self.id,
-            'timestamp': dump_datetime(self.timestamp),
-            'message': self.msg,
-        }
+
+class User(db.Model):
+    __tablename__ = 'users'
+
+    username = Column(Text, primary_key=True)
+    email = Column(Text)
+    password_hash = Column(Text, nullable=False, server_default='invalid')
+    current_token = Column(UUID, server_default='gen_random_uuid()')
 
 
 @app.route('/', methods=['GET'])
@@ -51,26 +66,129 @@ def home():
     return "<h1>It's alive!!!</h1>"
 
 
-@app.route('/msg', methods=['GET'])
-def read_msg():
-    messages = db.session \
-        .query(test_message) \
-        .order_by(test_message.timestamp) \
-        .all()
-    print(messages)
-    return flask.jsonify(json_list=[i.serialize for i in messages])
+'''update users set password_hash = crypt('passw0rd', gen_salt('bf'));'''
+'''SELECT pswhash = crypt('entered password', pswhash) FROM ... ;'''
 
 
-@app.route('/send', methods=['POST'])
-def put_test_msg():
-    msg = request.form["msg"]
-    print("Got msg: " + msg)
-    db.session.add(test_message(msg=msg))
+@app.route('/get_token', methods=['POST'])
+def get_token():
+    username = request.form["username"]
+    password = request.form["password"]
+    print(f"Get token: ({username}:{password})")
+    user_obj = _get_user_object(username, password)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'bad_credential',
+        })
+    else:
+        return flask.jsonify({
+            'username': user_obj.username,
+            'token': user_obj.current_token,
+        })
+
+
+@app.route('/regen_token', methods=['POST'])
+def regen_token():
+    username = request.form["username"]
+    password = request.form["password"]
+    print(f"Get token: ({username}:{password})")
+    user_obj = _get_user_object(username, password)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'bad_credential',
+        })
+    # now do update
+    db.session.execute(
+        'UPDATE users SET current_token = gen_random_uuid() WHERE username=:user;',  # noqa: E501
+        {'user': username}
+    )
     db.session.commit()
-    return "<h1>Msg recieved</h1>"
+    return flask.jsonify({
+            'result': 'success',
+        })
 
 
-# update the schema
-# Will not overwrite existing table per
-# https://docs.sqlalchemy.org/en/13/core/metadata.html#sqlalchemy.schema.MetaData.create_all
-db.create_all()
+@app.route('/update_user', methods=['POST'])
+def update_user():
+    username = request.form["username"]
+    password = request.form["password"]
+
+    print(f"Get token: ({username}:{password})")
+    user_obj = _get_user_object(username, password)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'bad_credential',
+        })
+
+    new_email = None
+    if "new_password" in request.form:
+        new_password = request.form["new_password"]
+        print(f"New password: {new_password}")
+        db.session.execute(
+            "UPDATE users SET password_hash = crypt(:password, gen_salt('bf')) WHERE username=:user;",  # noqa: E501
+            {
+                'user': username,
+                'password': new_password,
+            }
+        ).close()
+
+    if "new_email" in request.form:
+        new_email = request.form["new_email"]
+        print(f"New email: {new_email}")
+        # TODO: Email validation
+        user_obj.email = new_email
+
+    # now do update
+    db.session.commit()
+    return flask.jsonify({
+            'result': 'success',
+        })
+
+
+@app.route('/create_user', methods=['POST'])
+def create_user():
+    username = request.form["username"]
+    password = request.form["password"]
+    email = request.form["email"]
+    if _get_user_object(username, password=None) is not None:
+        return flask.jsonify({
+            'error': 'user_exists',
+        })
+    db.session.add(
+        User(
+            username=username,
+            email=email,
+        )
+    )
+    db.session.commit()
+    db.session.execute(
+        "UPDATE users SET password_hash = crypt(:password, gen_salt('bf')) WHERE username=:user;",  # noqa: E501
+        {
+            'user': username,
+            'password': password,
+        }
+    ).close()
+    # now do update
+    db.session.commit()
+    user_obj = _get_user_object(username, password=None)
+    return flask.jsonify({
+            'result': 'success',
+            'username': user_obj.username,
+            'email': user_obj.email,
+            'token': user_obj.current_token,
+        })
+
+
+def _get_user_object(username, password=''):
+    user_obj = User.query.filter_by(username=username).first()
+    if user_obj is None:
+        return None
+    if password is None:
+        return user_obj
+    is_correct = db.session.execute('SELECT :hash = crypt(:pass, :hash);',
+                                    {'hash': user_obj.password_hash,
+                                     'pass': password}).first()[0]
+    if not is_correct:
+        return None
+    else:
+        return user_obj
