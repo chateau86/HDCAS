@@ -8,8 +8,8 @@ import flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 
-from sqlalchemy import Column, DateTime, Enum, Integer, Text, text
-from sqlalchemy.dialects.postgresql.base import UUID
+from sqlalchemy import BigInteger, Column, DateTime, Enum, Integer, Text, text, Float  # noqa: E501
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 
 app = flask.Flask(__name__)
@@ -36,19 +36,31 @@ def dump_datetime(value):
     return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
 
 
-class Response(db.Model):
+'''sqlacodegen $DB_URL'''
+
+
+class DriveDetail(Base):
+    __tablename__ = 'drive_details'
+
+    id = Column(Integer, primary_key=True, server_default=text("nextval('drive_details_id_seq'::regclass)"))  # noqa: E501
+    serial_number = Column(Text, nullable=False)
+    username = Column(Text, nullable=False)
+    drive_model = Column(Text, nullable=False, server_default=text("'unknown'::text"))  # noqa: E501
+    drive_status = Column(Enum('active', 'retired', 'failed', name='drive_status_enum'), server_default=text("'active'::drive_status_enum"))  # noqa: E501
+    drive_nickname = Column(Text)
+    drive_size_bytes = Column(BigInteger, server_default=text("0"))
+    drive_lba_size_bytes = Column(Integer, server_default=text("512"))
+    status_date = Column(DateTime, server_default=text("now()"))
+
+
+class Response(Base):
     __tablename__ = 'responses'
 
-    id = Column(Integer,
-                primary_key=True,
-                server_default=text("nextval('responses_id_seq'::regclass)"))
+    id = Column(Integer, primary_key=True, server_default=text("nextval('responses_id_seq'::regclass)"))  # noqa: E501
     serial_number = Column(Text, nullable=False)
     username = Column(Text, nullable=False)
     raw_smart_json = Column(Text)
     response_json = Column(Text)
-    drive_status = Column(Enum('active', 'retired', 'failed',
-                               name='drive_status_enum'),
-                          server_default=text("'active'::drive_status_enum"))
     created_at = Column(DateTime, server_default=text("now()"))
 
 
@@ -61,13 +73,50 @@ class User(db.Model):
     current_token = Column(UUID, server_default='gen_random_uuid()')
 
 
+class HistoricalDatum(Base):
+    __tablename__ = 'historical_data'
+
+    id = Column(Integer, primary_key=True, server_default=text("nextval('historical_data_id_seq'::regclass)"))  # noqa: E501
+    serial_number = Column(Text, nullable=False)
+    drive_model = Column(Text, nullable=False, server_default=text("'unknown'::text"))  # noqa: E501
+    drive_status = Column(Enum('active', 'retired', 'failed', name='drive_status_enum'), server_default=text("'active'::drive_status_enum"))  # noqa: E501
+    smart_1_raw = Column(Integer)
+    smart_1_normalized = Column(Integer)
+    smart_4_raw = Column(Integer)
+    smart_4_normalized = Column(Integer)
+    smart_5_raw = Column(Integer)
+    smart_5_normalized = Column(Integer)
+    smart_7_raw = Column(Integer)
+    smart_7_normalized = Column(Integer)
+    smart_9_raw = Column(Integer)
+    smart_9_normalized = Column(Integer)
+    smart_12_raw = Column(Integer)
+    smart_12_normalized = Column(Integer)
+    smart_190_raw = Column(Integer)
+    smart_190_normalized = Column(Integer)
+    smart_192_raw = Column(Integer)
+    smart_192_normalized = Column(Integer)
+    smart_193_raw = Column(Integer)
+    smart_193_normalized = Column(Integer)
+    smart_197_raw = Column(Integer)
+    smart_197_normalized = Column(Integer)
+    smart_198_raw = Column(Integer)
+    smart_198_normalized = Column(Integer)
+    smart_199_raw = Column(Integer)
+    smart_199_normalized = Column(Integer)
+    smart_240_raw = Column(Integer)
+    smart_240_normalized = Column(Integer)
+    smart_241_raw = Column(Integer)
+    smart_241_normalized = Column(Integer)
+    smart_241_cycles = Column(Float)
+    smart_242_raw = Column(Integer)
+    smart_242_normalized = Column(Integer)
+    smart_242_cycles = Column(Float)
+
+
 @app.route('/', methods=['GET'])
 def home():
     return "<h1>It's alive!!!</h1>"
-
-
-'''update users set password_hash = crypt('passw0rd', gen_salt('bf'));'''
-'''SELECT pswhash = crypt('entered password', pswhash) FROM ... ;'''
 
 
 @app.route('/get_token', methods=['POST'])
