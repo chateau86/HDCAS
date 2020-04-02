@@ -8,9 +8,12 @@ import flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 
-from sqlalchemy import BigInteger, Column, DateTime, Enum, Integer, Text, text, Float  # noqa: E501
+from sqlalchemy import BigInteger, Column, DateTime, Enum, Integer, Text, text, Float, ForeignKey  # noqa: E501
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
+
+from uuid import UUID as UUID_class
 
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
@@ -39,7 +42,7 @@ def dump_datetime(value):
 '''sqlacodegen $DB_URL'''
 
 
-class DriveDetail(Base):
+class DriveDetail(db.Model):
     __tablename__ = 'drive_details'
 
     id = Column(Integer, primary_key=True, server_default=text("nextval('drive_details_id_seq'::regclass)"))  # noqa: E501
@@ -53,15 +56,21 @@ class DriveDetail(Base):
     status_date = Column(DateTime, server_default=text("now()"))
 
 
-class Response(Base):
+class Response(db.Model):
     __tablename__ = 'responses'
 
     id = Column(Integer, primary_key=True, server_default=text("nextval('responses_id_seq'::regclass)"))  # noqa: E501
-    serial_number = Column(Text, nullable=False)
-    username = Column(Text, nullable=False)
+    serial_number = Column(ForeignKey('drive_details.serial_number'), nullable=False)  # noqa: E501
+    username = Column(ForeignKey('users.username'), ForeignKey('users.username'), ForeignKey('users.username'), ForeignKey('users.username'), nullable=False)  # noqa: E501
     raw_smart_json = Column(Text)
     response_json = Column(Text)
     created_at = Column(DateTime, server_default=text("now()"))
+
+    drive_detail = relationship('DriveDetail')
+    user = relationship('User', primaryjoin='Response.username == User.username')  # noqa: E501
+    user1 = relationship('User', primaryjoin='Response.username == User.username')  # noqa: E501
+    user2 = relationship('User', primaryjoin='Response.username == User.username')  # noqa: E501
+    user3 = relationship('User', primaryjoin='Response.username == User.username')  # noqa: E501
 
 
 class User(db.Model):
@@ -73,11 +82,11 @@ class User(db.Model):
     current_token = Column(UUID, server_default='gen_random_uuid()')
 
 
-class HistoricalDatum(Base):
+class HistoricalDatum(db.Model):
     __tablename__ = 'historical_data'
 
     id = Column(Integer, primary_key=True, server_default=text("nextval('historical_data_id_seq'::regclass)"))  # noqa: E501
-    serial_number = Column(Text, nullable=False)
+    serial_number = Column(ForeignKey('drive_details.serial_number'), nullable=False)  # noqa: E501
     drive_model = Column(Text, nullable=False, server_default=text("'unknown'::text"))  # noqa: E501
     drive_status = Column(Enum('active', 'retired', 'failed', name='drive_status_enum'), server_default=text("'active'::drive_status_enum"))  # noqa: E501
     smart_1_raw = Column(Integer)
@@ -113,10 +122,27 @@ class HistoricalDatum(Base):
     smart_242_normalized = Column(Integer)
     smart_242_cycles = Column(Float)
 
+    drive_detail = relationship('DriveDetail')
+
 
 @app.route('/', methods=['GET'])
 def home():
     return "<h1>It's alive!!!</h1>"
+
+
+@app.route('/_test_get_user', methods=['POST'])
+def _test_get_user():
+    token = request.form["token"]
+    user_obj = _get_user_object_from_token(token)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'not found',
+        })
+    else:
+        return flask.jsonify({
+            'username': user_obj.username,
+            'token': user_obj.current_token,
+        })
 
 
 @app.route('/get_token', methods=['POST'])
@@ -228,6 +254,54 @@ def create_user():
         })
 
 
+@app.route('/get_all', methods=['POST'])
+def get_all():
+    token = request.form["token"]
+    user_obj = _get_user_object_from_token(token)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'not found',
+        })
+    username = user_obj.username
+    responses = db.session.query(Response, DriveDetail)\
+        .join(DriveDetail)\
+        .filter_by(username=username).all()
+    return flask.jsonify(_serialize_responses(responses))
+
+
+@app.route('/get_all_active', methods=['POST'])
+def get_all_active():
+    token = request.form["token"]
+    user_obj = _get_user_object_from_token(token)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'not found',
+        })
+    username = user_obj.username
+    responses = db.session.query(Response, DriveDetail)\
+        .join(DriveDetail)\
+        .filter_by(username=username)\
+        .filter(DriveDetail.drive_status == 'active').all()
+    return flask.jsonify(_serialize_responses(responses))
+
+
+@app.route('/get_one', methods=['POST'])
+def get_one():
+    token = request.form["token"]
+    serial = request.form["serial_number"]
+    user_obj = _get_user_object_from_token(token)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'not found',
+        })
+    username = user_obj.username
+    responses = Response.query\
+        .join(DriveDetail)\
+        .filter_by(username=username)\
+        .filter_by(serial_number=serial).all()
+    return flask.jsonify(_serialize_responses(responses))
+
+
 def _get_user_object(username, password=''):
     user_obj = User.query.filter_by(username=username).first()
     if user_obj is None:
@@ -241,3 +315,31 @@ def _get_user_object(username, password=''):
         return None
     else:
         return user_obj
+
+
+def _get_user_object_from_token(user_token):
+    if not _validate_uuid(user_token):
+        return None
+    user_obj = User.query.filter_by(current_token=user_token).first()
+    return user_obj
+
+
+def _serialize_responses(responses):
+    return_dict = {}
+    for resp in responses:
+        return_dict[resp[0].serial_number] = {
+            'drive_status': resp[1].drive_status,
+            'drive_nickname': resp[1].drive_nickname,
+            'smart_json': resp[0].raw_smart_json,
+            'response_json': resp[0].response_json,
+            'created_at': dump_datetime(resp[0].created_at),
+        }
+    return return_dict
+
+
+def _validate_uuid(uuid_str):
+    try:
+        uuid_obj = UUID_class(uuid_str, version=4)
+    except ValueError:
+        return False
+    return str(uuid_obj).replace('-', '') == uuid_str.replace('-', '')
