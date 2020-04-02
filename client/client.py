@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 
-from tkinter import Tk, Frame, Listbox, Scrollbar, Label, Button
-from pySMART import DeviceList
+from tkinter import Tk, Frame, Listbox, Scrollbar, Label, Button, scrolledtext
+
+import queue
 import ctypes
 import os
 import sys
+
+from worker import SMARTReaderThread
+
+BACKEND_URL = "10.0.0.115:5000"
+API_TOKEN = "c91a3ec3-0ad2-471e-8899-3211da76074f"
+# TODO: Ask user for token
 
 
 class WarningItem:
@@ -28,6 +35,17 @@ class DriveItem:
         for warn in self.warnings:
             out += '\t\t' + str(warn)
         return out
+
+
+class AttrItem:
+    def __init__(self, num, name, raw, norm):
+        self.num = num
+        self.name = name
+        self.raw = raw
+        self.norm = norm
+
+    def __repr__(self):
+        return str(self.num) + ": " + self.name + ": " + self.raw
 
 
 class ListWithScroll:
@@ -56,7 +74,10 @@ class Main_window(Frame):
 
         self.master = master
         self.master.title("HDCAS")
-        self.master.minsize(height=200, width=200)
+        self.master.minsize(height=200, width=400)
+
+        self.smart_device_queue = queue.Queue()
+        self.network_response_queue = queue.Queue()
 
         top_controls_frame = Frame(master)
         drive_list_frame = Frame(master)
@@ -76,6 +97,14 @@ class Main_window(Frame):
         btn = Button(top_controls_frame,
                      text="Load SMART data",
                      command=self.do_SMART_read)
+        btn.pack(side='left')
+        btn = Button(top_controls_frame,
+                     text="Upload data",
+                     command=self.do_network_push)
+        btn.pack(side='left')
+        btn = Button(top_controls_frame,
+                     text="Download data",
+                     command=self.do_network_pull)
         btn.pack(side='left')
 
         # init drive list frame
@@ -101,15 +130,21 @@ class Main_window(Frame):
 
         warning_detail_frame = Frame(drive_detail_frame)
         warning_detail_frame.grid(sticky="nsew", row=2, column=0)
-        warning_msg = Label(warning_detail_frame,
-                            text="Drive warning here",
-                            anchor='w',
-                            )
-        warning_msg.grid(row=0, column=0, sticky='nsew')
+        warning_msg_label = Label(warning_detail_frame,
+                                  text="Warning details",
+                                  anchor='w',)
+        warning_msg_label.grid(row=0, column=0, sticky='nsew')
+        warning_msg = scrolledtext.ScrolledText(
+            warning_detail_frame,
+            state='disabled', width=40, height=10, wrap='none'
+        )
+        warning_msg.grid(row=1, column=0, sticky='nsew')
+        warning_detail_frame.grid_rowconfigure(0, weight=1)
         warning_detail_frame.grid_columnconfigure(0, weight=1)
 
         self._warning_list = warning_list.get_list_box()
         self._warning_msg = warning_msg
+        self._watch_smart_data_queue()
 
     def _update_drive_list(self, drive_list):
         self._drive_list.delete(0, 'end')
@@ -136,37 +171,76 @@ class Main_window(Frame):
             for i in range(len(self.current_drive.warnings)):
                 self._warning_list \
                     .insert(i, self.current_drive.warnings[i].title)
-        self._warning_msg.configure(text="No warning selected")
+        self._set_warning_msg("No warning selected")
 
     def _warning_click_callback(self, event):
         w = event.widget
         if len(w.curselection()) == 0:
             # self.current_drive = None
-            self._warning_msg.configure(text="No warning selected")
+            self._set_warning_msg("No warning selected")
             return
         index = int(w.curselection()[0])
-        self._warning_msg \
-            .configure(text=str(self.current_drive.warnings[index].desc))
+        self._set_warning_msg(str(self.current_drive.warnings[index].desc))
         return
 
-    def do_SMART_read(self):
-        # TODO: Actual SMART data read and stuff
-        # TODO: Async this
-        raw_drive_list = DeviceList()
-        print(raw_drive_list)
-        drive_list = []
-        for dev in raw_drive_list.devices:
-            param_list = []
-            for attr in dev.attributes:
+    def _set_warning_msg(self, msg):
+        self._warning_msg['state'] = 'normal'
+        self._warning_msg.delete('1.0', 'end')
+        self._warning_msg.insert('1.0', msg)
+        self._warning_msg['state'] = 'disabled'
+
+    def _watch_smart_data_queue(self):
+        # print("Watching SMART queue")
+        self.master.after(200, self._watch_smart_data_queue)
+        drive_list = {}
+        try:
+            drive_list = self.smart_device_queue.get_nowait()
+        except queue.Empty:
+            return
+        drive_item_list = []
+        for serial in drive_list:
+            drive = drive_list[serial]
+            attr_list = {}
+            for attr in drive.attributes:
                 if attr is None:
                     continue
-                param_list.append(
-                    WarningItem(attr.name, attr.name + ": " + attr.raw)
+                # TODO: Put params in the outbox instead of warnings
+                attr_list[attr.num] = AttrItem(
+                    attr.num,
+                    attr.name,
+                    attr.raw,
+                    attr.value
                 )
-            drive_list.append(
-                DriveItem(dev.model + ": " + dev.serial, str(dev), param_list)
+            disp_string = ""
+            for attr in attr_list:
+                disp_string += str(attr_list[attr]) + '\n'
+            # implicitly also discard all past warnings
+            # as they would no longer be valid
+            warning_list = [
+                WarningItem("Raw SMART readings", disp_string),
+            ]
+            drive_item_list.append(
+                DriveItem(
+                    drive.model + ": " + drive.serial,
+                    str(drive),
+                    warning_list,
+                )
             )
-        self._update_drive_list(drive_list)
+        self._update_drive_list(drive_item_list)
+
+    def do_SMART_read(self):
+        worker = SMARTReaderThread(self.smart_device_queue)
+        worker.run()
+
+    def do_network_push(self):
+        # TODO: Actual SMART data read and stuff
+        # TODO: Async this
+        pass
+
+    def do_network_pull(self):
+        # TODO: Actual SMART data read and stuff
+        # TODO: Async this
+        pass
 
     def clear_data(self):
         # TODO: Actual SMART data read and stuff
