@@ -15,6 +15,8 @@ from sqlalchemy.ext.declarative import declarative_base
 
 from uuid import UUID as UUID_class
 
+from predictors import MasterPredictor
+
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
 app.config['SQLALCHEMY_ECHO'] = True
@@ -25,6 +27,7 @@ db = SQLAlchemy(app)
 Base = declarative_base()
 metadata = Base.metadata
 
+master_predictor = MasterPredictor.MasterPredictor()
 
 print("Server init ok")
 print("DB URL: "+os.environ['DB_URL'])
@@ -321,14 +324,10 @@ def push_data():
             'error': 'Drive not registered',
         })
     print("smart_json: "+smart_json)
-    return flask.jsonify({
-        'error': 'Not implemented yet',
-    })
-    responses = Response.query\
-        .join(DriveDetail)\
-        .filter_by(username=username)\
-        .filter_by(serial_number=serial).all()
-    return flask.jsonify(_serialize_responses(responses))
+    # TODO: Decode smart_json to HistoricalDatum and save to DB
+    # TODO: Put request into response update queue
+    res = master_predictor.predict(None)
+    return flask.jsonify(res)
 
 
 def _get_user_object(username, password=''):
