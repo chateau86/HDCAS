@@ -302,6 +302,35 @@ def get_one():
     return flask.jsonify(_serialize_responses(responses))
 
 
+@app.route('/push_data', methods=['POST'])
+def push_data():
+    token = request.form["token"]
+    serial = request.form["serial_number"]
+    smart_json = request.form["smart_json"]
+    user_obj = _get_user_object_from_token(token)
+    if user_obj is None:
+        return flask.jsonify({
+            'error': 'not found',
+        })
+    username = user_obj.username
+    drive = DriveDetail.query\
+        .filter_by(username=username)\
+        .filter_by(serial_number=serial).first()
+    if drive is None:
+        return flask.jsonify({
+            'error': 'Drive not registered',
+        })
+    print("smart_json: "+smart_json)
+    return flask.jsonify({
+        'error': 'Not implemented yet',
+    })
+    responses = Response.query\
+        .join(DriveDetail)\
+        .filter_by(username=username)\
+        .filter_by(serial_number=serial).all()
+    return flask.jsonify(_serialize_responses(responses))
+
+
 def _get_user_object(username, password=''):
     user_obj = User.query.filter_by(username=username).first()
     if user_obj is None:
