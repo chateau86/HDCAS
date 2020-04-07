@@ -3,19 +3,24 @@
 # run `flask run --host=0.0.0.0`
 
 import os
+import queue
+import threading
+import datetime
 
 import flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 
-from sqlalchemy import BigInteger, Column, DateTime, Enum, Integer, Text, text, Float, ForeignKey  # noqa: E501
+from sqlalchemy import Column, ForeignKey  # noqa: E501
+from sqlalchemy import BigInteger, DateTime, Enum, Integer, Text, text, Float, Boolean  # noqa: E501
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 from uuid import UUID as UUID_class
+import json
 
-from predictors import MasterPredictor
+from predictors.predictors import MasterPredictor
 
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
@@ -27,7 +32,7 @@ db = SQLAlchemy(app)
 Base = declarative_base()
 metadata = Base.metadata
 
-master_predictor = MasterPredictor.MasterPredictor()
+prediction_queue = queue.Queue()
 
 print("Server init ok")
 print("DB URL: "+os.environ['DB_URL'])
@@ -57,6 +62,7 @@ class DriveDetail(db.Model):
     drive_size_bytes = Column(BigInteger, server_default=text("0"))
     drive_lba_size_bytes = Column(Integer, server_default=text("512"))
     status_date = Column(DateTime, server_default=text("now()"))
+    is_ssd = Column(Boolean)
 
 
 class Response(db.Model):
@@ -298,7 +304,7 @@ def get_one():
             'error': 'not found',
         })
     username = user_obj.username
-    responses = Response.query\
+    responses = db.session.query(Response, DriveDetail)\
         .join(DriveDetail)\
         .filter_by(username=username)\
         .filter_by(serial_number=serial).all()
@@ -324,10 +330,60 @@ def push_data():
             'error': 'Drive not registered',
         })
     print("smart_json: "+smart_json)
+    try:
+        smart_json_dict = json.loads(smart_json)
+    except json.JSONDecodeError:
+        return flask.jsonify({
+            'error': 'Malformed JSON payload',
+        })
+    smart_json_dict['drive_size_bytes'] = drive.drive_size_bytes
+    smart_json_dict['drive_lba_size_bytes'] = drive.drive_lba_size_bytes
+    smart_json_dict['drive_lba_count'] = (int)(drive.drive_size_bytes / (float)(drive.drive_lba_size_bytes))  # noqa: E501
+    if 'smart_241_raw' in smart_json_dict:
+        smart_json_dict['smart_241_cycles'] = smart_json_dict['smart_241_raw'] / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
+    if 'smart_242_raw' in smart_json_dict:
+        smart_json_dict['smart_242_cycles'] = smart_json_dict['smart_242_raw'] / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
     # TODO: Decode smart_json to HistoricalDatum and save to DB
     # TODO: Put request into response update queue
-    res = master_predictor.predict(None)
-    return flask.jsonify(res)
+    # executor.submit(_predict_and_update_response, drive, smart_json)
+    prediction_queue.put_nowait((drive, smart_json_dict))
+    return flask.jsonify({
+            'status': 'ok',
+        })
+
+
+class PredictionWorkerThread(threading.Thread):
+    def __init__(self, in_queue):
+        threading.Thread.__init__(self)
+        self.in_queue = in_queue
+        self.master_predictor = MasterPredictor()
+
+    def run(self):
+        with app.app_context():
+            while True:
+                try:
+                    (drive, smart_json) = self.in_queue.get(block=True, timeout=0.1)  # noqa: E501
+                except queue.Empty:
+                    continue
+                res = self.master_predictor.predict(smart_json)
+                # TODO: Get old response by serial number and delete
+                print("will now update response for {:}".format(drive.serial_number))  # noqa: E501
+                Response.query.filter_by(serial_number=drive.serial_number).delete()  # noqa: E501
+                db.session.add(
+                    Response(
+                        serial_number=drive.serial_number,
+                        username=drive.username,
+                        raw_smart_json=json.dumps(smart_json),
+                        response_json=json.dumps(res),
+                        created_at=datetime.datetime.now(),
+                    )
+                )
+                db.session.commit()
+                print("Response for {:} updated".format(drive.serial_number))  # noqa: E501
+
+
+pred = PredictionWorkerThread(prediction_queue)
+pred.start()
 
 
 def _get_user_object(username, password=''):
@@ -355,11 +411,12 @@ def _get_user_object_from_token(user_token):
 def _serialize_responses(responses):
     return_dict = {}
     for resp in responses:
+        print("resp: {:}".format(resp))
         return_dict[resp[0].serial_number] = {
             'drive_status': resp[1].drive_status,
             'drive_nickname': resp[1].drive_nickname,
-            'smart_json': resp[0].raw_smart_json,
-            'response_json': resp[0].response_json,
+            'smart_json': json.loads(resp[0].raw_smart_json),
+            'response_json': json.loads(resp[0].response_json),
             'created_at': dump_datetime(resp[0].created_at),
         }
     return return_dict

@@ -1,5 +1,5 @@
 from datetime import datetime
-from predictors import MasterPredictor
+from predictors import predictors
 
 
 class LoopbackPredictor:
@@ -9,10 +9,11 @@ class LoopbackPredictor:
     def predict(self, datum):
         # Datum is HistoricalDatum-compatible object
         print("Loopback predictor called")
-        return {
-            'algo': 'LoopbackPredictor',
-            'version': '0.0.0',
-            'init_date': MasterPredictor.dump_datetime(self.init_at),
-            'warn_level': 'green',
-            'warnings': [],
-        }
+        ret = predictors.AlgoResult(
+            algo="Loopback",
+            version="0.0.0",
+            data_date=datetime.utcfromtimestamp(0),
+            init_date=self.init_at,
+            warn_list=[],
+        )
+        return ret
