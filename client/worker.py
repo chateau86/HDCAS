@@ -16,12 +16,18 @@ class SMARTReaderThread(threading.Thread):
 
 
 class DriveStatusTransmitterThread(threading.Thread):
+    def __init__(self, out_queue):
+        self.out_queue = out_queue
+
     def run(self):
         # TODO
         pass
 
 
 class DriveStatusRecieverThread(threading.Thread):
+    def __init__(self, out_queue):
+        self.out_queue = out_queue
+
     def run(self):
         # TODO
         pass

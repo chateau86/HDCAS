@@ -6,12 +6,58 @@ import queue
 import ctypes
 import os
 import sys
+import pprint
 
 from worker import SMARTReaderThread
+
+SMART_PARAM_ENABLED = [1, 4, 5, 7, 9, 12, 190, 192, 193, 194, 197, 198, 199, 240, 241, 242]  # noqa: E501
+SMART_PARAM_CYCLES = [241, 242]
 
 BACKEND_URL = "10.0.0.115:5000"
 API_TOKEN = "c91a3ec3-0ad2-471e-8899-3211da76074f"
 # TODO: Ask user for token
+
+
+def dump_datetime(value):
+    """Deserialize datetime object into string form for JSON processing."""
+    if value is None:
+        return None
+    return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
+
+
+class DriveInfoRequestPayload:
+    def __init__(self,
+                 model="",
+                 serial="",
+                 is_ssd=False,
+                 attr_list={},
+                 timestamp_override=None,
+                 ):
+        self.model = model
+        self.serial = serial
+        self.is_ssd = is_ssd
+        self.attr_list = attr_list
+        self.timestamp_override = timestamp_override
+
+    def __repr__(self):
+        return self.to_json_dict()
+
+    def to_json_dict(self):
+        out_dict = {}
+        for p in SMART_PARAM_ENABLED:
+            p = str(p)
+            if p in self.attr_list:
+                out_dict['smart_{:}_raw'.format(p)] = self.attr_list[p].raw
+                out_dict['smart_{:}_normalized'.format(p)] = self.attr_list[p].norm  # noqa: E501
+        if '190' not in self.attr_list and '194' in self.attr_list:
+            out_dict['smart_190_raw'.format(p)] = self.attr_list['194'].raw
+            out_dict['smart_190_normalized'.format(p)] = self.attr_list['194'].norm  # noqa: E501
+        out_dict['model'] = self.model
+        out_dict['serial'] = self.serial
+        out_dict['is_ssd'] = str(self.is_ssd)
+        if self.timestamp_override is not None:
+            out_dict['timestamp_override'] = dump_datetime(self.timestamp_override)  # noqa: E501
+        return out_dict
 
 
 class WarningItem:
@@ -198,13 +244,13 @@ class Main_window(Frame):
         except queue.Empty:
             return
         drive_item_list = []
+        drive_request_dict = {}
         for serial in drive_list:
             drive = drive_list[serial]
             attr_list = {}
             for attr in drive.attributes:
                 if attr is None:
                     continue
-                # TODO: Put params in the outbox instead of warnings
                 attr_list[attr.num] = AttrItem(
                     attr.num,
                     attr.name,
@@ -226,16 +272,29 @@ class Main_window(Frame):
                     warning_list,
                 )
             )
+            drive_request_dict[serial] = DriveInfoRequestPayload(
+                model=drive.model,
+                serial=drive.serial,
+                is_ssd=drive.is_ssd,
+                attr_list=attr_list,
+                timestamp_override=None,
+            )
         self._update_drive_list(drive_item_list)
+        # TODO: Push drive_Attr_dict to the network
+        self.do_network_push(drive_request_dict)
 
     def do_SMART_read(self):
         worker = SMARTReaderThread(self.smart_device_queue)
         worker.run()
 
-    def do_network_push(self):
+    def do_network_push(self, drive_request_dict):
         # TODO: Actual SMART data read and stuff
         # TODO: Async this
-        pass
+        print("---")
+        for serial in drive_request_dict:
+            pprint.pprint(drive_request_dict[serial].to_json_dict())
+            print("-")
+        print("---")
 
     def do_network_pull(self):
         # TODO: Actual SMART data read and stuff
