@@ -10,7 +10,6 @@ Hard Drive Condition Alert System
     - Flask
     - Flask-sqlalchemy
     - simplejson
-    - Flask-Executor
 - Client
     - Python3
     - SmartMonTools
