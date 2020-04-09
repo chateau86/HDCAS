@@ -45,7 +45,11 @@ def dump_datetime(value):
     """Deserialize datetime object into string form for JSON processing."""
     if value is None:
         return None
-    return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
+    return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def decode_datetime(str_in):
+    return datetime.strptime(str_in, "%Y-%m-%d %H:%M:%S")
 
 
 '''sqlacodegen $DB_URL'''
@@ -64,6 +68,18 @@ class DriveDetail(db.Model):
     drive_lba_size_bytes = Column(Integer, server_default=text("512"))
     status_date = Column(DateTime, server_default=text("now()"))
     is_ssd = Column(Boolean)
+
+    def to_json_dict(self):
+        return {
+            'serial_number': self.serial_number,
+            'drive_model': self.drive_model,
+            'drive_status': str(self.drive_status),
+            'drive_nickname': self.drive_nickname,
+            'drive_total_size_byte': self.drive_size_bytes,
+            'drive_lba_size_byte': self.drive_lba_size_bytes,
+            'status_date': dump_datetime(self.status_date),
+            'is_ssd': self.is_ssd,
+        }
 
 
 class Response(db.Model):
@@ -98,7 +114,6 @@ class HistoricalDatum(db.Model):
     id = Column(Integer, primary_key=True, server_default=text("nextval('historical_data_id_seq'::regclass)"))  # noqa: E501
     serial_number = Column(ForeignKey('drive_details.serial_number'), nullable=False)  # noqa: E501
     drive_model = Column(Text, nullable=False, server_default=text("'unknown'::text"))  # noqa: E501
-    drive_status = Column(Enum('active', 'retired', 'failed', name='drive_status_enum'), server_default=text("'active'::drive_status_enum"))  # noqa: E501
     smart_1_raw = Column(Integer)
     smart_1_normalized = Column(Integer)
     smart_4_raw = Column(Integer)
@@ -131,6 +146,7 @@ class HistoricalDatum(db.Model):
     smart_242_raw = Column(Integer)
     smart_242_normalized = Column(Integer)
     smart_242_cycles = Column(Float)
+    created_at = Column(DateTime, server_default=text("now()"))
 
     drive_detail = relationship('DriveDetail')
 
@@ -302,14 +318,38 @@ def get_one():
     user_obj = _get_user_object_from_token(token)
     if user_obj is None:
         return flask.jsonify({
-            'error': 'not found',
-        })
+                'error': 'not found',
+            }),
     username = user_obj.username
     responses = db.session.query(Response, DriveDetail)\
         .join(DriveDetail)\
         .filter_by(username=username)\
         .filter_by(serial_number=serial).all()
+    if len(responses) == 0:
+        return flask.jsonify({
+            'error': 'drive not found',
+        }), 404
     return flask.jsonify(_serialize_responses(responses))
+
+
+@app.route('/get_drive_info', methods=['POST'])
+def get_drive_info():
+    token = request.form["token"]
+    serial = request.form["serial_number"]
+    user_obj = _get_user_object_from_token(token)
+    if user_obj is None:
+        return flask.jsonify({
+                'error': 'not found',
+            }),
+    username = user_obj.username
+    drive = DriveDetail.query\
+        .filter_by(username=username)\
+        .filter_by(serial_number=serial).first()
+    if drive is None:
+        return flask.jsonify({
+            'error': 'drive not found',
+        }), 404
+    return flask.jsonify(drive.to_json_dict())
 
 
 @app.route('/push_data', methods=['POST'])
@@ -344,12 +384,22 @@ def push_data():
         smart_json_dict['smart_241_cycles'] = smart_json_dict['smart_241_raw'] / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
     if 'smart_242_raw' in smart_json_dict:
         smart_json_dict['smart_242_cycles'] = smart_json_dict['smart_242_raw'] / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
-    # TODO: Decode smart_json to HistoricalDatum and save to DB
-    history_record = HistoricalDatum(
-        serial_number=serial,
-        drive_model=drive.drive_model,
-        drive_status=drive.drive_status,
-    )
+
+    history_record = None
+    new_record = False
+    if 'date_override' in request.form:
+        created_at = decode_datetime(request.form['date_override'])
+        history_record = HistoricalDatum.query\
+            .filter_by(created_at=created_at)\
+            .filter_by(serial_number=serial).first()
+    if history_record is None:
+        new_record = True
+        history_record = HistoricalDatum(
+            serial_number=serial,
+            drive_model=drive.drive_model,
+        )
+        if 'date_override' in request.form:
+            history_record.created_at = decode_datetime(request.form['date_override'])  # noqa: E501
     for var in SMART_PARAM_ENABLED:
         raw_name = 'smart_{:}_raw'.format(var)
         norm_name = 'smart_{:}_normalized'.format(var)
@@ -357,10 +407,13 @@ def push_data():
             history_record.__setattr__(raw_name, int(smart_json_dict[raw_name]))  # noqa: E501
         if norm_name in smart_json_dict:
             history_record.__setattr__(norm_name, int(smart_json_dict[norm_name]))  # noqa: E501
-    db.session.add(history_record)
+
+    if new_record:
+        db.session.add(history_record)
     db.session.commit()
     # Put request into response update queue
-    prediction_queue.put_nowait((username, serial, smart_json_dict))
+    if 'date_override' not in request.form:
+        prediction_queue.put_nowait((username, serial, smart_json_dict))
     return flask.jsonify({
             'status': 'ok',
         })
@@ -398,14 +451,11 @@ def update_drive_info():
             if 'nickname' in request.form:
                 drive.drive_nickname = request.form['nickname']
             if 'total_size_byte' in request.form:
-                drive.total_size_byte = int(request.form['total_size_byte'])
+                drive.drive_size_bytes = int(request.form['total_size_byte'])
             if 'lba_size_byte' in request.form:
-                drive.total_size_byte = int(request.form['lba_size_byte'])
-            if 'status_date_override' in request.form:
-                drive.status_date = datetime.strptime(
-                    request.form['status_date_override'],  # noqa: E501
-                    "%Y-%m-%d %H:%M:%S"
-                )
+                drive.drive_lba_size_bytes = int(request.form['lba_size_byte'])
+            if 'date_override' in request.form:
+                drive.status_date = decode_datetime(request.form['date_override'])  # noqa: E501
             if 'is_ssd' in request.form:
                 drive.is_ssd = strtobool(request.form['is_ssd'])
         except Exception as e:
@@ -416,6 +466,7 @@ def update_drive_info():
         db.session.commit()
         return flask.jsonify({
             'status': 'ok',
+            'drive': drive.to_json_dict(),
         })
     try:
         if 'model' in request.form:
@@ -429,14 +480,13 @@ def update_drive_info():
         if 'nickname' in request.form:
             drive.drive_nickname = request.form['nickname']
         if 'total_size_byte' in request.form:
-            drive.total_size_byte = int(request.form['total_size_byte'])
+            drive.drive_size_bytes = int(request.form['total_size_byte'])
         if 'lba_size_byte' in request.form:
-            drive.total_size_byte = int(request.form['lba_size_byte'])
-        if 'status_date_override' in request.form:
-            drive.status_date = datetime.strptime(
-                request.form['status_date_override'],  # noqa: E501
-                "%Y-%m-%d %H:%M:%S"
-            )
+            drive.drive_lba_size_bytes = int(request.form['lba_size_byte'])
+        if 'date_override' in request.form:
+            drive.status_date = decode_datetime(request.form['date_override'])  # noqa: E501
+        else:
+            drive.status_date = datetime.now()
         if 'is_ssd' in request.form:
             drive.is_ssd = strtobool(request.form['is_ssd'])
     except Exception as e:
@@ -446,6 +496,7 @@ def update_drive_info():
     db.session.commit()
     return flask.jsonify({
             'status': 'ok',
+            'drive': drive.to_json_dict(),
         })
 
 
@@ -468,7 +519,7 @@ class PredictionWorkerThread(threading.Thread):
                     .filter_by(username=username)\
                     .filter_by(serial_number=serial).first()
                 # TODO: Get old response by serial number and delete
-                print("will now update response for {:}".format(drive.serial_number))  # noqa: E501
+                # print("will now update response for {:}".format(drive.serial_number))  # noqa: E501
                 Response.query.filter_by(serial_number=drive.serial_number).delete()  # noqa: E501
                 db.session.add(
                     Response(
@@ -480,7 +531,7 @@ class PredictionWorkerThread(threading.Thread):
                     )
                 )
                 db.session.commit()
-                print("Response for {:} updated".format(drive.serial_number))  # noqa: E501
+                # print("Response for {:} updated".format(drive.serial_number))  # noqa: E501
 
 
 pred = PredictionWorkerThread(prediction_queue)
