@@ -1,4 +1,5 @@
 from predictors.loopback import LoopbackPredictor
+from predictors.dtree import DTreePredictor
 from datetime import datetime
 
 SMART_PARAM_ENABLED = [1, 4, 5, 7, 9, 12, 190, 192, 193, 194, 197, 198, 199, 240, 241, 242]  # noqa: E501
@@ -9,7 +10,7 @@ def dump_datetime(value):
     """Deserialize datetime object into string form for JSON processing."""
     if value is None:
         return None
-    return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
+    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class WarningItem:
@@ -75,6 +76,7 @@ class MasterPredictor:
     def __init__(self):
         self.predictor_dict = {}
         self.predictor_dict['loopback'] = LoopbackPredictor.LoopbackPredictor()
+        self.predictor_dict['dtree'] = DTreePredictor.DTreePredictor()
 
     def predict(self, datum):
         out_dict = {}
@@ -82,3 +84,7 @@ class MasterPredictor:
             out_dict[pred] = self.predictor_dict[pred]\
                 .predict(datum).to_json_dict()
         return out_dict
+
+    def train(self, DB_URL):
+        for pred in self.predictor_dict:
+            self.predictor_dict[pred].train(DB_URL)

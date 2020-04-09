@@ -24,8 +24,8 @@ import json
 from predictors.predictors import MasterPredictor, SMART_PARAM_ENABLED
 
 app = flask.Flask(__name__)
-app.config["DEBUG"] = True
-app.config['SQLALCHEMY_ECHO'] = True
+# app.config["DEBUG"] = True
+# app.config['SQLALCHEMY_ECHO'] = True
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -114,41 +114,43 @@ class HistoricalDatum(db.Model):
     id = Column(Integer, primary_key=True, server_default=text("nextval('historical_data_id_seq'::regclass)"))  # noqa: E501
     serial_number = Column(ForeignKey('drive_details.serial_number'), nullable=False)  # noqa: E501
     drive_model = Column(Text, nullable=False, server_default=text("'unknown'::text"))  # noqa: E501
-    smart_1_raw = Column(Integer)
-    smart_1_normalized = Column(Integer)
-    smart_4_raw = Column(Integer)
-    smart_4_normalized = Column(Integer)
-    smart_5_raw = Column(Integer)
-    smart_5_normalized = Column(Integer)
-    smart_7_raw = Column(Integer)
-    smart_7_normalized = Column(Integer)
-    smart_9_raw = Column(Integer)
-    smart_9_normalized = Column(Integer)
-    smart_12_raw = Column(Integer)
-    smart_12_normalized = Column(Integer)
-    smart_190_raw = Column(Integer)
-    smart_190_normalized = Column(Integer)
-    smart_192_raw = Column(Integer)
-    smart_192_normalized = Column(Integer)
-    smart_193_raw = Column(Integer)
-    smart_193_normalized = Column(Integer)
-    smart_197_raw = Column(Integer)
-    smart_197_normalized = Column(Integer)
-    smart_198_raw = Column(Integer)
-    smart_198_normalized = Column(Integer)
-    smart_199_raw = Column(Integer)
-    smart_199_normalized = Column(Integer)
-    smart_240_raw = Column(Integer)
-    smart_240_normalized = Column(Integer)
-    smart_241_raw = Column(Integer)
-    smart_241_normalized = Column(Integer)
+    username = Column(ForeignKey('users.username'), nullable=False)
+    smart_1_raw = Column(BigInteger)
+    smart_1_normalized = Column(BigInteger)
+    smart_4_raw = Column(BigInteger)
+    smart_4_normalized = Column(BigInteger)
+    smart_5_raw = Column(BigInteger)
+    smart_5_normalized = Column(BigInteger)
+    smart_7_raw = Column(BigInteger)
+    smart_7_normalized = Column(BigInteger)
+    smart_9_raw = Column(BigInteger)
+    smart_9_normalized = Column(BigInteger)
+    smart_12_raw = Column(BigInteger)
+    smart_12_normalized = Column(BigInteger)
+    smart_190_raw = Column(BigInteger)
+    smart_190_normalized = Column(BigInteger)
+    smart_192_raw = Column(BigInteger)
+    smart_192_normalized = Column(BigInteger)
+    smart_193_raw = Column(BigInteger)
+    smart_193_normalized = Column(BigInteger)
+    smart_197_raw = Column(BigInteger)
+    smart_197_normalized = Column(BigInteger)
+    smart_198_raw = Column(BigInteger)
+    smart_198_normalized = Column(BigInteger)
+    smart_199_raw = Column(BigInteger)
+    smart_199_normalized = Column(BigInteger)
+    smart_240_raw = Column(BigInteger)
+    smart_240_normalized = Column(BigInteger)
+    smart_241_raw = Column(BigInteger)
+    smart_241_normalized = Column(BigInteger)
     smart_241_cycles = Column(Float)
-    smart_242_raw = Column(Integer)
-    smart_242_normalized = Column(Integer)
+    smart_242_raw = Column(BigInteger)
+    smart_242_normalized = Column(BigInteger)
     smart_242_cycles = Column(Float)
     created_at = Column(DateTime, server_default=text("now()"))
 
     drive_detail = relationship('DriveDetail')
+    user = relationship('User')
 
 
 @app.route('/', methods=['GET'])
@@ -175,7 +177,7 @@ def _test_get_user():
 def get_token():
     username = request.form["username"]
     password = request.form["password"]
-    print(f"Get token: ({username}:{password})")
+    # print(f"Get token: ({username}:{password})")
     user_obj = _get_user_object(username, password)
     if user_obj is None:
         return flask.jsonify({
@@ -192,7 +194,7 @@ def get_token():
 def regen_token():
     username = request.form["username"]
     password = request.form["password"]
-    print(f"Get token: ({username}:{password})")
+    # print(f"Get token: ({username}:{password})")
     user_obj = _get_user_object(username, password)
     if user_obj is None:
         return flask.jsonify({
@@ -214,7 +216,7 @@ def update_user():
     username = request.form["username"]
     password = request.form["password"]
 
-    print(f"Get token: ({username}:{password})")
+    # print(f"Get token: ({username}:{password})")
     user_obj = _get_user_object(username, password)
     if user_obj is None:
         return flask.jsonify({
@@ -224,7 +226,7 @@ def update_user():
     new_email = None
     if "new_password" in request.form:
         new_password = request.form["new_password"]
-        print(f"New password: {new_password}")
+        # print(f"New password: {new_password}")
         db.session.execute(
             "UPDATE users SET password_hash = crypt(:password, gen_salt('bf')) WHERE username=:user;",  # noqa: E501
             {
@@ -235,7 +237,7 @@ def update_user():
 
     if "new_email" in request.form:
         new_email = request.form["new_email"]
-        print(f"New email: {new_email}")
+        # print(f"New email: {new_email}")
         # TODO: Email validation
         user_obj.email = new_email
 
@@ -370,7 +372,7 @@ def push_data():
         return flask.jsonify({
             'error': 'Drive not registered',
         })
-    print("smart_json: "+smart_json)
+    # print("smart_json: "+smart_json)
     try:
         smart_json_dict = json.loads(smart_json)
     except json.JSONDecodeError:
@@ -381,9 +383,9 @@ def push_data():
     smart_json_dict['drive_lba_size_bytes'] = drive.drive_lba_size_bytes
     smart_json_dict['drive_lba_count'] = (int)(drive.drive_size_bytes / (float)(drive.drive_lba_size_bytes))  # noqa: E501
     if 'smart_241_raw' in smart_json_dict:
-        smart_json_dict['smart_241_cycles'] = smart_json_dict['smart_241_raw'] / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
+        smart_json_dict['smart_241_cycles'] = int(smart_json_dict['smart_241_raw']) / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
     if 'smart_242_raw' in smart_json_dict:
-        smart_json_dict['smart_242_cycles'] = smart_json_dict['smart_242_raw'] / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
+        smart_json_dict['smart_242_cycles'] = int(smart_json_dict['smart_242_raw']) / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
 
     history_record = None
     new_record = False
@@ -391,11 +393,13 @@ def push_data():
         created_at = decode_datetime(request.form['date_override'])
         history_record = HistoricalDatum.query\
             .filter_by(created_at=created_at)\
+            .filter_by(username=username)\
             .filter_by(serial_number=serial).first()
     if history_record is None:
         new_record = True
         history_record = HistoricalDatum(
             serial_number=serial,
+            username=username,
             drive_model=drive.drive_model,
         )
         if 'date_override' in request.form:
@@ -404,9 +408,15 @@ def push_data():
         raw_name = 'smart_{:}_raw'.format(var)
         norm_name = 'smart_{:}_normalized'.format(var)
         if raw_name in smart_json_dict:
+            smart_json_dict[raw_name] = int(smart_json_dict[raw_name])
             history_record.__setattr__(raw_name, int(smart_json_dict[raw_name]))  # noqa: E501
         if norm_name in smart_json_dict:
+            smart_json_dict[norm_name] = int(smart_json_dict[norm_name])
             history_record.__setattr__(norm_name, int(smart_json_dict[norm_name]))  # noqa: E501
+    if 'smart_241_cycles' in smart_json_dict:
+        history_record.smart_241_cycles = smart_json_dict['smart_241_cycles']
+    if 'smart_242_cycles' in smart_json_dict:
+        history_record.smart_242_cycles = smart_json_dict['smart_242_cycles']
 
     if new_record:
         db.session.add(history_record)
@@ -534,10 +544,6 @@ class PredictionWorkerThread(threading.Thread):
                 # print("Response for {:} updated".format(drive.serial_number))  # noqa: E501
 
 
-pred = PredictionWorkerThread(prediction_queue)
-pred.start()
-
-
 def _get_user_object(username, password=''):
     user_obj = User.query.filter_by(username=username).first()
     if user_obj is None:
@@ -580,3 +586,17 @@ def _validate_uuid(uuid_str):
     except ValueError:
         return False
     return str(uuid_obj).replace('-', '') == uuid_str.replace('-', '')
+
+
+def _start_server():
+    pred = PredictionWorkerThread(prediction_queue)
+    pred.start()
+    # app.run(host='0.0.0.0', threaded=False, processes=16)
+    # app.run(host='0.0.0.0', threaded=False, processes=3)
+    app.run(host='0.0.0.0', threaded=True)
+
+
+if __name__ == '__main__':
+    # master_predictor = MasterPredictor()
+    # master_predictor.train(os.environ['DB_URL'])
+    _start_server()
