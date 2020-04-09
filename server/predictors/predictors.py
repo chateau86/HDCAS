@@ -1,16 +1,7 @@
 from predictors.loopback import LoopbackPredictor
 from predictors.dtree import DTreePredictor
 from datetime import datetime
-
-SMART_PARAM_ENABLED = [1, 4, 5, 7, 9, 12, 190, 192, 193, 194, 197, 198, 199, 240, 241, 242]  # noqa: E501
-SMART_PARAM_CYCLES = [241, 242]
-
-
-def dump_datetime(value):
-    """Deserialize datetime object into string form for JSON processing."""
-    if value is None:
-        return None
-    return value.strftime("%Y-%m-%d %H:%M:%S")
+from data_model import dump_datetime
 
 
 class WarningItem:

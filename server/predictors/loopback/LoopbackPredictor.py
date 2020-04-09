@@ -1,5 +1,6 @@
 from datetime import datetime
 from predictors import predictors
+from data_model import SMART_PARAM_CYCLES, SMART_PARAM_ENABLED
 
 
 class LoopbackPredictor:
@@ -7,16 +8,14 @@ class LoopbackPredictor:
         self.init_at = datetime.now()
 
     def train(self, db_url):
-        print("LoopbackPredictor: Training started")
-        print(predictors.SMART_PARAM_ENABLED)
         print("LoopbackPredictor: Training completed")
 
     def predict(self, datum):
         # Datum is JSON dict
-        print("Loopback predictor called")
-        print(datum)
+        # print("Loopback predictor called")
+        # print(datum)
         warn_list = []
-        for var in predictors.SMART_PARAM_ENABLED:
+        for var in SMART_PARAM_ENABLED:
             raw_name = 'smart_{:}_raw'.format(var)
             norm_name = 'smart_{:}_normalized'.format(var)
             if raw_name in datum:
@@ -33,7 +32,7 @@ class LoopbackPredictor:
                     value=datum[norm_name],
                     level='green'
                 ))
-            if var in predictors.SMART_PARAM_CYCLES:
+            if var in SMART_PARAM_CYCLES:
                 cycle_name = 'smart_{:}_cycles'.format(var)
                 if cycle_name in datum:
                     warn_list.append(predictors.WarningItem(
