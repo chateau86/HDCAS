@@ -1,119 +1,22 @@
 #!/usr/bin/env python3
 
-from tkinter import Tk, Frame, Listbox, Scrollbar, Label, Button, scrolledtext
+from tkinter import Tk, Frame, Label, Button, scrolledtext, Toplevel  # noqa: E501
 
 import queue
 import ctypes
 import os
 import sys
-import pprint
 
-from worker import SMARTReaderThread
+from worker import SMARTReaderThread, DriveStatusTransmitterThread
+from utils import DriveInfoRequestPayload, WarningItem, DriveItem, AttrItem, ListWithScroll  # noqa: E501
 
-SMART_PARAM_ENABLED = [1, 4, 5, 7, 9, 12, 190, 192, 193, 194, 197, 198, 199, 240, 241, 242]  # noqa: E501
-SMART_PARAM_CYCLES = [241, 242]
 
-BACKEND_URL = "10.0.0.115:5000"
+BACKEND_URL = "http://10.0.0.115:5000"
 API_TOKEN = "c91a3ec3-0ad2-471e-8899-3211da76074f"
 # TODO: Ask user for token
 
 
-def dump_datetime(value):
-    """Deserialize datetime object into string form for JSON processing."""
-    if value is None:
-        return None
-    return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
-
-
-class DriveInfoRequestPayload:
-    def __init__(self,
-                 model="",
-                 serial="",
-                 is_ssd=False,
-                 attr_list={},
-                 timestamp_override=None,
-                 ):
-        self.model = model
-        self.serial = serial
-        self.is_ssd = is_ssd
-        self.attr_list = attr_list
-        self.timestamp_override = timestamp_override
-
-    def __repr__(self):
-        return self.to_json_dict()
-
-    def to_json_dict(self):
-        out_dict = {}
-        for p in SMART_PARAM_ENABLED:
-            p = str(p)
-            if p in self.attr_list:
-                out_dict['smart_{:}_raw'.format(p)] = self.attr_list[p].raw
-                out_dict['smart_{:}_normalized'.format(p)] = self.attr_list[p].norm  # noqa: E501
-        if '190' not in self.attr_list and '194' in self.attr_list:
-            out_dict['smart_190_raw'.format(p)] = self.attr_list['194'].raw
-            out_dict['smart_190_normalized'.format(p)] = self.attr_list['194'].norm  # noqa: E501
-        out_dict['model'] = self.model
-        out_dict['serial'] = self.serial
-        out_dict['is_ssd'] = str(self.is_ssd)
-        if self.timestamp_override is not None:
-            out_dict['timestamp_override'] = dump_datetime(self.timestamp_override)  # noqa: E501
-        return out_dict
-
-
-class WarningItem:
-    def __init__(self, title, desc):
-        self.title = title
-        self.desc = desc
-
-    def __repr__(self):
-        return self.title + ": " + self.desc
-
-
-class DriveItem:
-    def __init__(self, title, smart_data, warnings):
-        self.title = title
-        self.smart_data = smart_data
-        self.warnings = warnings
-
-    def __repr__(self):
-        out = self.title + '\n' + \
-              '\tSMART: ' + self.smart_data
-        for warn in self.warnings:
-            out += '\t\t' + str(warn)
-        return out
-
-
-class AttrItem:
-    def __init__(self, num, name, raw, norm):
-        self.num = num
-        self.name = name
-        self.raw = raw
-        self.norm = norm
-
-    def __repr__(self):
-        return str(self.num) + ": " + self.name + ": " + self.raw
-
-
-class ListWithScroll:
-    def __init__(self, parent, callback):
-        self._frame = Frame(parent)
-        self._scrollbar = Scrollbar(self._frame)
-        self._list_box = Listbox(self._frame, selectmode="browse",
-                                 exportselection=False,
-                                 yscrollcommand=self._scrollbar.set)
-        self._scrollbar.config(command=self._list_box.yview)
-        self._list_box.pack(side='left', fill='both', expand=1)
-        self._scrollbar.pack(side='right', fill='both')
-        self._list_box.bind('<<ListboxSelect>>', callback)
-
-    def get_list_box(self):
-        return self._list_box
-
-    def get_frame(self):
-        return self._frame
-
-
-class Main_window(Frame):
+class MainWindow(Frame):
     def __init__(self, master=None):
         self.drive_list = []
         self.current_drive = None
@@ -123,7 +26,8 @@ class Main_window(Frame):
         self.master.minsize(height=200, width=400)
 
         self.smart_device_queue = queue.Queue()
-        self.network_response_queue = queue.Queue()
+        self.network_send_response_queue = queue.Queue()
+        self.child_window = None
 
         top_controls_frame = Frame(master)
         drive_list_frame = Frame(master)
@@ -145,12 +49,12 @@ class Main_window(Frame):
                      command=self.do_SMART_read)
         btn.pack(side='left')
         btn = Button(top_controls_frame,
-                     text="Upload data",
-                     command=self.do_network_push)
-        btn.pack(side='left')
-        btn = Button(top_controls_frame,
                      text="Download data",
                      command=self.do_network_pull)
+        btn.pack(side='left')
+        btn = Button(top_controls_frame,
+                     text="Register/update selected drive",
+                     command=self.do_drive_register)
         btn.pack(side='left')
 
         # init drive list frame
@@ -191,6 +95,7 @@ class Main_window(Frame):
         self._warning_list = warning_list.get_list_box()
         self._warning_msg = warning_msg
         self._watch_smart_data_queue()
+        self._watch_net_send_resp_queue()
 
     def _update_drive_list(self, drive_list):
         self._drive_list.delete(0, 'end')
@@ -283,18 +188,30 @@ class Main_window(Frame):
         # TODO: Push drive_Attr_dict to the network
         self.do_network_push(drive_request_dict)
 
+    def _watch_net_send_resp_queue(self):
+        # print("Watching SMART queue")
+        self.master.after(200, self._watch_net_send_resp_queue)
+        try:
+            drive_list = self.network_send_response_queue.get_nowait()
+        except queue.Empty:
+            return
+        # TODO
+
     def do_SMART_read(self):
         worker = SMARTReaderThread(self.smart_device_queue)
         worker.run()
 
     def do_network_push(self, drive_request_dict):
-        # TODO: Actual SMART data read and stuff
-        # TODO: Async this
-        print("---")
-        for serial in drive_request_dict:
-            pprint.pprint(drive_request_dict[serial].to_json_dict())
-            print("-")
-        print("---")
+        worker = DriveStatusTransmitterThread(self.network_send_response_queue, BACKEND_URL, API_TOKEN)  # noqa: E501
+        worker.run(drive_request_dict)
+
+    def do_drive_register(self):
+        # TODO:
+        if self.child_window:
+            self.child_window.destroy()
+            self.child_window = None
+        else:
+            self.child_window = DriveRegisterWindow()
 
     def do_network_pull(self):
         # TODO: Actual SMART data read and stuff
@@ -305,6 +222,19 @@ class Main_window(Frame):
         # TODO: Actual SMART data read and stuff
         drive_list = []
         self._update_drive_list(drive_list)
+
+
+class DriveRegisterWindow(Toplevel):
+    def __init__(self):
+        super().__init__(root)
+        a = Label(self, text="First Name").grid(row = 0,column = 0)
+        b = Label(window ,text = "Last Name").grid(row = 1,column = 0)
+        c = Label(window ,text = "Email Id").grid(row = 2,column = 0)
+        d = Label(window ,text = "Contact Number").grid(row = 3,column = 0)
+        a1 = Entry(window).grid(row = 0,column = 1)
+        b1 = Entry(window).grid(row = 1,column = 1)
+        c1 = Entry(window).grid(row = 2,column = 1)
+        d1 = Entry(window).grid(row = 3,column = 1)
 
 
 if __name__ == '__main__':
@@ -330,5 +260,5 @@ if __name__ == '__main__':
         print("Must run as admin for smartctl usage")
         exit()
     root = Tk()
-    app = Main_window(root)
+    app = MainWindow(root)
     root.mainloop()
