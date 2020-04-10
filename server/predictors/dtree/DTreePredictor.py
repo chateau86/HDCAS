@@ -11,7 +11,8 @@ from data_model import HistoricalDatum
 from data_model import db, SMART_PARAM_ENABLED, SMART_PARAM_CYCLES
 VERSION = '1.0.0'
 DATA_PATH = './model_data/DTreePredictor_model.pickle'
-DRIVE_COUNT_LIMIT = 100
+# DRIVE_COUNT_LIMIT = 100
+DRIVE_COUNT_LIMIT = None
 SAFE_DAYS = 60
 YELLOW_DAYS = 30
 RED_DAYS = 15
@@ -80,6 +81,8 @@ class DTreePredictor:
             days_to_failure = min(days_to_failure, SAFE_DAYS)
             data_row = self._vectorize_obj(record, days_to_failure)
             drive_arr.append(data_row)
+        if len(drive_arr) == 0:
+            return np.zeros((0, len(SMART_PARAM_ENABLED) + 1))
         drive_arr = np.asarray(drive_arr)
         # print("Drive {:} ok".format(ind+1))
         return drive_arr
@@ -123,7 +126,7 @@ class DTreePredictor:
         )
         self.predictor.fit(input_arr, output_arr)
         current_r2 = self.predictor.score(input_arr, output_arr)
-        print("Training result: R2={:}".format(current_r2))  # noqa: E501
+        print("Training result: 1-R2={:}".format(1 - current_r2))  # noqa: E501
         elapsed = (datetime.now() - time_start).total_seconds()
         print("Trained in {:} s".format(elapsed))
         model = {
