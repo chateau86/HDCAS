@@ -3,6 +3,7 @@
 # run `flask run --host=0.0.0.0`
 
 import os
+import sys
 import queue
 import threading
 from datetime import datetime
@@ -10,7 +11,6 @@ from distutils.util import strtobool
 
 import flask
 from flask import request
-from flask_sqlalchemy import SQLAlchemy
 
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -19,15 +19,9 @@ import json
 
 from predictors.predictors import MasterPredictor
 from data_model import SMART_PARAM_ENABLED
-from data_model import DriveDetail, Response, User, HistoricalDatum, dump_datetime  # noqa: E501
+from data_model import DriveDetail, Response, User, HistoricalDatum, dump_datetime, app, db  # noqa: E501
 
-app = flask.Flask(__name__)
-# app.config["DEBUG"] = True
-# app.config['SQLALCHEMY_ECHO'] = True
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
 Base = declarative_base()
 metadata = Base.metadata
 
@@ -492,6 +486,9 @@ def _start_server():
 
 
 if __name__ == '__main__':
-    master_predictor = MasterPredictor()
-    master_predictor.train(os.environ['DB_URL'])
-    _start_server()
+    if '--train' in sys.argv:
+        print("Training mode")
+        master_predictor = MasterPredictor()
+        master_predictor.train(os.environ['DB_URL'])
+    else:
+        _start_server()

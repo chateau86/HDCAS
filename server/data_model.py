@@ -3,10 +3,13 @@ from sqlalchemy import BigInteger, DateTime, Enum, Integer, Text, text, Float, B
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import flask
+import os
 from flask_sqlalchemy import SQLAlchemy
 '''sqlacodegen $DB_URL'''
 
-app = flask.Flask(__name__)
+app = flask.Flask("HDCAS_server")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DB_URL']
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 SMART_PARAM_ENABLED = [1, 4, 5, 7, 9, 12, 190, 192, 193, 194, 197, 198, 199, 240, 241, 242]  # noqa: E501
