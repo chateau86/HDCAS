@@ -1,20 +1,17 @@
 from datetime import datetime, timedelta
 import pickle
 from sqlalchemy import text
-import pprint
 import numpy as np
 import sklearn.impute as impute
-import sklearn.linear_model as linear_model
 import sklearn.ensemble as ensemble
 from concurrent.futures import ThreadPoolExecutor
 
 from predictors import predictors
-from data_model import DriveDetail, Response, User, HistoricalDatum
-from data_model import dump_datetime
-from data_model import app, db, SMART_PARAM_ENABLED, SMART_PARAM_CYCLES
-VERSION = '0.0.0'
+from data_model import HistoricalDatum
+from data_model import db, SMART_PARAM_ENABLED, SMART_PARAM_CYCLES
+VERSION = '1.0.0'
 DATA_PATH = './model_data/DTreePredictor_model.pickle'
-DRIVE_COUNT_LIMIT = 1000
+DRIVE_COUNT_LIMIT = 100
 SAFE_DAYS = 60
 YELLOW_DAYS = 30
 RED_DAYS = 15
@@ -110,9 +107,9 @@ class DTreePredictor:
             missing_values=np.nan,
             strategy='median'
         )
-        self.imputer.fit(data_arr)
-        data_arr = self.imputer.transform(data_arr)
         input_arr = data_arr[:, 0:-1]
+        self.imputer.fit(input_arr)
+        input_arr = self.imputer.transform(input_arr)
         output_arr = data_arr[:, -1]
         
         print("Checking {:} data points".format(len(output_arr)))
@@ -137,8 +134,6 @@ class DTreePredictor:
         print("DTreePredictor: Training completed")
 
     def _vectorize_obj(self, record, days_to_failure):
-        # Fill missing with NaN, then impute
-        # https://scikit-learn.org/stable/modules/impute.html
         out_arr = np.zeros(len(SMART_PARAM_ENABLED) + 1)
         for ind in range(len(SMART_PARAM_ENABLED)):
             var = SMART_PARAM_ENABLED[ind]
@@ -149,14 +144,46 @@ class DTreePredictor:
         out_arr[-1] = days_to_failure
         return out_arr
 
+    def _vectorize_json(self, record):
+        # Fill missing with NaN, then impute
+        # https://scikit-learn.org/stable/modules/impute.html
+        out_arr = np.zeros(len(SMART_PARAM_ENABLED))
+        for ind in range(len(SMART_PARAM_ENABLED)):
+            var = SMART_PARAM_ENABLED[ind]
+            name = 'smart_{:}_raw'.format(var)
+            if var in SMART_PARAM_CYCLES:
+                name = 'smart_{:}_cycles'.format(var)
+            if name in record:
+                out_arr[ind] = record[name]
+            else:
+                out_arr[ind] = np.nan
+        out_arr = self.imputer.transform([out_arr])
+        return out_arr[0]
+
     def predict(self, datum):
         # Datum is HistoricalDatum-compatible object
         print("DTree predictor called")
+        vct = self._vectorize_json(datum)
+        days_to_failure = self.predictor.predict([vct])[0]
+        print(vct)
+        print(days_to_failure)
+        level = 'gree'
+        if days_to_failure <= YELLOW_DAYS:
+            level = 'yellow'
+        if days_to_failure <= RED_DAYS:
+            level = 'red'
         ret = predictors.AlgoResult(
             algo="DTree",
             version=VERSION,
             data_date=datetime.utcfromtimestamp(0),
             init_date=self.init_at,
-            warn_list=[],
+            warn_list=[
+                predictors.WarningItem(
+                    name="DTreePredictor days to failure",
+                    desc="Days until failure predicted by DTreePredictor",
+                    value=days_to_failure,
+                    level=level
+                )
+            ],
         )
         return ret
