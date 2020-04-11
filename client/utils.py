@@ -1,4 +1,4 @@
-from tkinter import Frame, Listbox, Scrollbar, Label, Entry, Checkbutton, IntVar
+from tkinter import Frame, Listbox, Scrollbar, Label, Entry, Checkbutton, IntVar  # noqa: E501
 from tkinter.ttk import Combobox
 
 SMART_PARAM_ENABLED = [1, 4, 5, 7, 9, 12, 190, 192, 193, 194, 197, 198, 199, 240, 241, 242]  # noqa: E501
@@ -215,7 +215,7 @@ class SelectWithLabel:
 
 
 class EntryWithLabel:
-    def __init__(self, parent, row, label_text, default_text, validator_cmd=None):
+    def __init__(self, parent, row, label_text, default_text, validator_cmd=None):  # noqa: E501
         self._label = Label(parent, text=label_text, justify='left')
         self._label.grid(row=row, column=0)
 
@@ -236,7 +236,7 @@ class EntryWithLabel:
         return self._entry
 
     def _validate(self, action, index, value_if_allowed,
-                  prior_value, text, validation_type, trigger_type, widget_name):
+                  prior_value, text, validation_type, trigger_type, widget_name):  # noqa: E501
         if self.validator_cmd is None:
             return True
         else:

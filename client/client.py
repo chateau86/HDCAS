@@ -51,8 +51,8 @@ class MainWindow(Frame):
 
         # init top controls
         btn = Button(top_controls_frame,
-                     text="Clear data",
-                     command=self.clear_data)
+                     text="Login",
+                     command=self.login)
         btn.pack(side='left')
         btn = Button(top_controls_frame,
                      text="Load SMART data",
@@ -302,7 +302,8 @@ class MainWindow(Frame):
         worker = DriveStatusRecieverThread(self.network_pull_queue, BACKEND_URL, API_TOKEN)  # noqa: E501
         worker.run()
 
-    def clear_data(self):
+    def login(self):
+        # TODO: Add login and token retrieval
         drive_list = {}
         self._update_drive_list(drive_list)
 
