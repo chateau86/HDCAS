@@ -67,9 +67,9 @@ class AlgoResult:
 class MasterPredictor:
     def __init__(self):
         self.predictor_dict = {}
-        self.predictor_dict['Raw values'] = LoopbackPredictor.LoopbackPredictor()
+        self.predictor_dict['Raw values'] = LoopbackPredictor.LoopbackPredictor()  # noqa: E501
         self.predictor_dict['Decision tree'] = DTreePredictor.DTreePredictor()
-        self.predictor_dict['Basic Check'] = BasicCheckPredictor.BasicCheckPredictor()
+        self.predictor_dict['Basic Check'] = BasicCheckPredictor.BasicCheckPredictor()  # noqa: E501
 
     def predict(self, datum):
         out_dict = {}

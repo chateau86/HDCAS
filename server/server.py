@@ -283,9 +283,9 @@ def push_data():
     smart_json_dict['drive_lba_size_bytes'] = drive.drive_lba_size_bytes
     if drive.drive_lba_size_bytes > 0:
         smart_json_dict['drive_lba_count'] = (int)(drive.drive_size_bytes / (float)(drive.drive_lba_size_bytes))  # noqa: E501
-    if 'smart_241_raw' in smart_json_dict and smart_json_dict['drive_lba_count'] > 0:
+    if 'smart_241_raw' in smart_json_dict and smart_json_dict['drive_lba_count'] > 0:  # noqa: E501
         smart_json_dict['smart_241_cycles'] = int(smart_json_dict['smart_241_raw']) / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
-    if 'smart_242_raw' in smart_json_dict and smart_json_dict['drive_lba_count'] > 0:
+    if 'smart_242_raw' in smart_json_dict and smart_json_dict['drive_lba_count'] > 0:  # noqa: E501
         smart_json_dict['smart_242_cycles'] = int(smart_json_dict['smart_242_raw']) / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
 
     history_record = None

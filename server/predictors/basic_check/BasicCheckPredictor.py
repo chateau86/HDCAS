@@ -1,8 +1,8 @@
 from datetime import datetime
 from predictors import predictors
-from data_model import SMART_PARAM_CYCLES, SMART_PARAM_ENABLED
 
 DANGER_VAR = [5, 197, 198, 199]
+
 
 class BasicCheckPredictor:
     def __init__(self):
