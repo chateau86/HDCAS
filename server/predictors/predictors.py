@@ -1,5 +1,6 @@
 from predictors.loopback import LoopbackPredictor
 from predictors.dtree import DTreePredictor
+from predictors.basic_check import BasicCheckPredictor
 from datetime import datetime
 from data_model import dump_datetime
 
@@ -66,8 +67,9 @@ class AlgoResult:
 class MasterPredictor:
     def __init__(self):
         self.predictor_dict = {}
-        self.predictor_dict['loopback'] = LoopbackPredictor.LoopbackPredictor()
-        self.predictor_dict['dtree'] = DTreePredictor.DTreePredictor()
+        self.predictor_dict['Raw values'] = LoopbackPredictor.LoopbackPredictor()
+        self.predictor_dict['Decision tree'] = DTreePredictor.DTreePredictor()
+        self.predictor_dict['Basic Check'] = BasicCheckPredictor.BasicCheckPredictor()
 
     def predict(self, datum):
         out_dict = {}

@@ -30,7 +30,7 @@ def pickle_model(model_data):
 def load_model():
     try:
         model_obj_in = pickle.load(open(DATA_PATH, 'rb'))
-        print("Loaded data: {:}".format(model_obj_in))
+        # print("Loaded data: {:}".format(model_obj_in))
         if model_obj_in['version'] != VERSION:
             print("Data version mismatch: Wanted {:} but got {:}".format(VERSION, model_obj_in['version']))  # noqa: E501
             return None
@@ -51,6 +51,7 @@ class DTreePredictor:
     def __init__(self):
         print("DTreePredictor: Init started")
         self.init_at = datetime.now()
+        self.data_date = datetime.utcfromtimestamp(0)
         self.imputer = None
         self.predictor = None
         # TODO: Try to load data
@@ -62,6 +63,8 @@ class DTreePredictor:
             if 'predictor' in model:
                 self.predictor = model['predictor']
                 print("predictor loaded")
+            if 'data_date' in model:
+                self.data_date = model['data_date']
         print("DTreePredictor: Init done")
 
     def _build_drive(self, res_itm):
@@ -114,7 +117,7 @@ class DTreePredictor:
         self.imputer.fit(input_arr)
         input_arr = self.imputer.transform(input_arr)
         output_arr = data_arr[:, -1]
-        
+
         print("Checking {:} data points".format(len(output_arr)))
         elapsed = (datetime.now() - time_start).total_seconds()
         print("Data loaded in {:} s rate {:} point/s".format(elapsed, len(output_arr)/elapsed))  # noqa: E501
@@ -132,6 +135,7 @@ class DTreePredictor:
         model = {
             'imputer': self.imputer,
             'predictor': self.predictor,
+            'data_date': datetime.now(),
         }
         pickle_model(model)
         print("DTreePredictor: Training completed")
@@ -165,12 +169,12 @@ class DTreePredictor:
 
     def predict(self, datum):
         # Datum is HistoricalDatum-compatible object
-        print("DTree predictor called")
+        # print("DTree predictor called")
         vct = self._vectorize_json(datum)
         days_to_failure = self.predictor.predict([vct])[0]
-        print(vct)
-        print(days_to_failure)
-        level = 'gree'
+        # print(vct)
+        # print(days_to_failure)
+        level = 'green'
         if days_to_failure <= YELLOW_DAYS:
             level = 'yellow'
         if days_to_failure <= RED_DAYS:
@@ -178,8 +182,9 @@ class DTreePredictor:
         ret = predictors.AlgoResult(
             algo="DTree",
             version=VERSION,
-            data_date=datetime.utcfromtimestamp(0),
+            data_date=self.data_date,
             init_date=self.init_at,
+            level=level,
             warn_list=[
                 predictors.WarningItem(
                     name="DTreePredictor days to failure",

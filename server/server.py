@@ -236,6 +236,23 @@ def get_drive_info():
     return flask.jsonify(drive.to_json_dict())
 
 
+@app.route('/get_all_drive_info', methods=['POST'])
+def get_all_drive_info():
+    token = request.form["token"]
+    user_obj = _get_user_object_from_token(token)
+    if user_obj is None:
+        return flask.jsonify({
+                'error': 'not found',
+            }),
+    username = user_obj.username
+    drives = DriveDetail.query\
+        .filter_by(username=username).all()
+    out_dict = {}
+    for drive in drives:
+        out_dict[drive.serial_number] = drive.to_json_dict()
+    return flask.jsonify(out_dict)
+
+
 @app.route('/push_data', methods=['POST'])
 def push_data():
     token = request.form["token"]
@@ -257,16 +274,18 @@ def push_data():
     # print("smart_json: "+smart_json)
     try:
         smart_json_dict = json.loads(smart_json)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(e)
         return flask.jsonify({
             'error': 'Malformed JSON payload',
         })
     smart_json_dict['drive_size_bytes'] = drive.drive_size_bytes
     smart_json_dict['drive_lba_size_bytes'] = drive.drive_lba_size_bytes
-    smart_json_dict['drive_lba_count'] = (int)(drive.drive_size_bytes / (float)(drive.drive_lba_size_bytes))  # noqa: E501
-    if 'smart_241_raw' in smart_json_dict:
+    if drive.drive_lba_size_bytes > 0:
+        smart_json_dict['drive_lba_count'] = (int)(drive.drive_size_bytes / (float)(drive.drive_lba_size_bytes))  # noqa: E501
+    if 'smart_241_raw' in smart_json_dict and smart_json_dict['drive_lba_count'] > 0:
         smart_json_dict['smart_241_cycles'] = int(smart_json_dict['smart_241_raw']) / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
-    if 'smart_242_raw' in smart_json_dict:
+    if 'smart_242_raw' in smart_json_dict and smart_json_dict['drive_lba_count'] > 0:
         smart_json_dict['smart_242_cycles'] = int(smart_json_dict['smart_242_raw']) / (float)(smart_json_dict['drive_lba_count'])  # noqa: E501
 
     history_record = None
@@ -304,7 +323,10 @@ def push_data():
         db.session.add(history_record)
     db.session.commit()
     # Put request into response update queue
-    if 'date_override' not in request.form:
+    force_pred = False
+    if 'force_predict' in request.form:
+        force_pred = strtobool(request.form['force_predict'])
+    if force_pred or 'date_override' not in request.form:
         prediction_queue.put_nowait((username, serial, smart_json_dict))
     return flask.jsonify({
             'status': 'ok',
@@ -458,11 +480,13 @@ def _get_user_object_from_token(user_token):
 def _serialize_responses(responses):
     return_dict = {}
     for resp in responses:
-        print("resp: {:}".format(resp))
+        # print("resp: {:}".format(resp))
         return_dict[resp[0].serial_number] = {
             'drive_status': resp[1].drive_status,
             'drive_nickname': resp[1].drive_nickname,
-            'smart_json': json.loads(resp[0].raw_smart_json),
+            'drive_model': resp[1].drive_model,
+            'serial_number': resp[1].serial_number,
+            # 'smart_json': json.loads(resp[0].raw_smart_json),
             'response_json': json.loads(resp[0].response_json),
             'created_at': dump_datetime(resp[0].created_at),
         }

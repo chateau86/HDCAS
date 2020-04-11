@@ -2,8 +2,9 @@ from datetime import datetime
 from predictors import predictors
 from data_model import SMART_PARAM_CYCLES, SMART_PARAM_ENABLED
 
+DANGER_VAR = [5, 197, 198, 199]
 
-class LoopbackPredictor:
+class BasicCheckPredictor:
     def __init__(self):
         self.init_at = datetime.now()
 
@@ -15,33 +16,24 @@ class LoopbackPredictor:
         # print("Loopback predictor called")
         # print(datum)
         warn_list = []
-        for var in SMART_PARAM_ENABLED:
+        for var in DANGER_VAR:
+            level = 'green'
             param_name = 'SMART {:}'.format(var)
             raw_name = 'smart_{:}_raw'.format(var)
-            norm_name = 'smart_{:}_normalized'.format(var)
-            desc_str = ''
-            value_str = ''
-            if raw_name in datum:
-                desc_str += 'Raw, '
-                value_str += str(datum[raw_name]) + ', '
-            if norm_name in datum:
-                desc_str += 'Normalized, '
-                value_str += str(datum[norm_name]) + ', '
-            if var in SMART_PARAM_CYCLES:
-                cycle_name = 'smart_{:}_cycles'.format(var)
-                if cycle_name in datum:
-                    desc_str += 'Cycles, '
-                    value_str += str(datum[cycle_name]) + ', '
-            if desc_str == '':
+            if raw_name not in datum:
                 continue
+            desc_str = 'Value should be zero for good drive'
+            value_str = str(datum[raw_name])
+            if datum[raw_name] > 0:
+                level = 'yellow'
             warn_list.append(predictors.WarningItem(
                 name=param_name,
                 desc=desc_str,
                 value=value_str,
-                level='green'
+                level=level
             ))
         ret = predictors.AlgoResult(
-            algo="Loopback",
+            algo="Basic check",
             version="0.0.0",
             data_date=datetime.utcfromtimestamp(0),
             init_date=self.init_at,
