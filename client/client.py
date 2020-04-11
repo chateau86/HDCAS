@@ -304,6 +304,7 @@ class MainWindow(Frame):
 
     def login(self):
         # TODO: Add login and token retrieval
+        # TODO: Also use this form for user registration
         drive_list = {}
         self._update_drive_list(drive_list)
 
