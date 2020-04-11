@@ -132,4 +132,3 @@ SECRETS.md
 .envrc_local
 .vscode/
 node_modules/
-*.pickle

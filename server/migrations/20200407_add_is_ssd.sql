@@ -1,1 +1,0 @@
-ALTER TABLE drive_details ADD is_ssd BOOLEAN;
