@@ -133,3 +133,4 @@ SECRETS.md
 .vscode/
 node_modules/
 *.pickle
+client/token.txt
