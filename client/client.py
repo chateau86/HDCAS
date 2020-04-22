@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from tkinter import Tk, Frame, Label, Button, scrolledtext, Toplevel  # noqa: E501
+from tkinter import Tk, Frame, Label, Button, scrolledtext, Toplevel, messagebox  # noqa: E501
 
 import queue
 import ctypes
@@ -11,7 +11,7 @@ import requests
 
 from worker import SMARTReaderThread, DriveStatusTransmitterThread, DriveStatusRecieverThread  # noqa: E501
 from utils import DriveInfoRequestPayload, WarningItem, DriveItem, AttrItem  # noqa: E501
-from utils import ListWithScroll, EntryWithLabel, SelectWithLabel, CheckWithLabel  # noqa: E501
+from utils import ListWithScroll, EntryWithLabel, SelectWithLabel, CheckWithLabel, PasswordWithLabel  # noqa: E501
 from utils import SURROGATE_PAIRS
 
 
@@ -20,6 +20,7 @@ BACKEND_URL = "http://10.0.0.115:5000"
 # API_TOKEN = "a72fbda1-4cbc-4e0f-b457-d26cab89e125"  # chateau86
 # API_TOKEN = "d72aea55-1c05-41c5-a9dd-3c3c0c0e8e2d"  # backblaze
 API_TOKEN = "d065ad28-fe88-4edf-95bb-8663605659d2"  # backblaze_demo
+API_TOKEN = None
 # TODO: Ask user for token
 
 
@@ -52,7 +53,7 @@ class MainWindow(Frame):
         # init top controls
         btn = Button(top_controls_frame,
                      text="Login",
-                     command=self.login)
+                     command=self._login)
         btn.pack(side='left')
         btn = Button(top_controls_frame,
                      text="Load SMART data",
@@ -104,11 +105,31 @@ class MainWindow(Frame):
         warning_detail_frame.grid_rowconfigure(1, weight=1)
         warning_detail_frame.grid_columnconfigure(0, weight=1)
 
+        self.master.after(100, self._load_user_token)
+
         self._warning_list = warning_list.get_list_box()
         self._warning_msg = warning_msg
         self._watch_smart_data_queue()
         self._watch_net_send_resp_queue()
         self._watch_net_recv_resp_queue()
+
+    def _load_user_token(self):
+        global API_TOKEN
+        try:
+            with open('token.txt', 'r') as f_in:
+                API_TOKEN = f_in.read().strip()
+            self.do_network_pull()
+        except:  # noqa: E722
+            # TODO Ask user for token
+            # API_TOKEN = "d065ad28-fe88-4edf-95bb-8663605659d2"
+            self.child_window = LoginWindow()
+
+    def _login(self):
+        self.drive_list = []
+        self.drive_dict = {}
+        self.current_drive = None
+        self._update_drive_list()
+        self.child_window = LoginWindow()
 
     def _update_drive_list(self):
         # now sort the dict
@@ -302,12 +323,6 @@ class MainWindow(Frame):
         worker = DriveStatusRecieverThread(self.network_pull_queue, BACKEND_URL, API_TOKEN)  # noqa: E501
         worker.run()
 
-    def login(self):
-        # TODO: Add login and token retrieval
-        # TODO: Also use this form for user registration
-        drive_list = {}
-        self._update_drive_list(drive_list)
-
 
 class DriveRegisterWindow(Toplevel):
     def __init__(self, cancel_callback, serial="", drive_item=None):
@@ -425,6 +440,62 @@ class DriveRegisterWindow(Toplevel):
             return True
         except Exception:
             return False
+
+
+class LoginWindow(Toplevel):
+    def __init__(self):
+        super().__init__(root)
+
+        box_frames = Frame(self)
+        box_frames.pack()
+
+        self.user_entry = EntryWithLabel(box_frames, 0, "Username", "")
+        self.password_entry = PasswordWithLabel(box_frames, 1, "Password", "")  # noqa: E501
+        btn_frame = Frame(self)
+        btn = Button(btn_frame,
+                     text="Login",
+                     command=self._submit)
+        btn.pack(side='left')
+        btn_frame.pack()
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+    def _submit(self):
+        global API_TOKEN
+        try:
+            req_body = {
+                'username': self.user_entry.get_val(),
+                'password': self.password_entry.get_val(),
+            }
+            # print(req_body)
+            resp = requests.post(BACKEND_URL+'/get_token', data=req_body)  # noqa: E501
+            if resp.status_code == 404:
+                return
+            if resp.status_code != 200:
+                print("Error {:}: {:}".format(resp.status_code, resp.reason))  # noqa: E501
+            else:
+                print("Token Request OK")
+                body = resp.json()
+                if 'error' in body:
+                    print("Error: {:}".format(body['error']))
+                    messagebox.showerror("Error", "Error: {:}".format(body['error']))  # noqa: E501
+                elif 'token' in body:
+                    API_TOKEN = body['token']
+                    try:
+                        with open('token.txt', 'w') as f_in:
+                            f_in.write(API_TOKEN)
+                    except:  # noqa: E722
+                        pass
+                    self._cancel()
+                else:
+                    print("Malformed response")
+                # pprint.pprint(body)
+        except Exception as e:
+            print(e)
+
+    def _cancel(self):
+        if API_TOKEN is None:
+            exit()
+        self.destroy()
 
 
 if __name__ == '__main__':

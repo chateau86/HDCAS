@@ -243,6 +243,35 @@ class EntryWithLabel:
             return self.validator_cmd(value_if_allowed)
 
 
+class PasswordWithLabel:
+    def __init__(self, parent, row, label_text, default_text, validator_cmd=None):  # noqa: E501
+        self._label = Label(parent, text=label_text, justify='left')
+        self._label.grid(row=row, column=0)
+
+        self._entry = Entry(parent, width=30, show='*')
+        self._entry.delete(0, 'end')
+        self._entry.insert(0, default_text)
+        self._entry.grid(row=row, column=1)
+        self.validator_cmd = validator_cmd
+
+    def set_val(self, text):
+        self._entry.delete(0, 'end')
+        self._entry.insert(0, text)
+
+    def get_val(self):
+        return self._entry.get()
+
+    def get_entry(self):
+        return self._entry
+
+    def _validate(self, action, index, value_if_allowed,
+                  prior_value, text, validation_type, trigger_type, widget_name):  # noqa: E501
+        if self.validator_cmd is None:
+            return True
+        else:
+            return self.validator_cmd(value_if_allowed)
+
+
 def dump_datetime(value):
     """Deserialize datetime object into string form for JSON processing."""
     if value is None:
