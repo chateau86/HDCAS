@@ -253,8 +253,15 @@ def get_all_drive_info():
     return flask.jsonify(out_dict)
 
 
+shared_timer = datetime.now()
+
+
 @app.route('/push_data', methods=['POST'])
 def push_data():
+    global shared_timer
+    if "start_bench" in request.form:
+        print("Benchmark started")
+        shared_timer = datetime.now()
     token = request.form["token"]
     serial = request.form["serial_number"]
     smart_json = request.form["smart_json"]
@@ -327,7 +334,11 @@ def push_data():
     if 'force_predict' in request.form:
         force_pred = strtobool(request.form['force_predict'])
     if force_pred or 'date_override' not in request.form:
-        prediction_queue.put_nowait((username, serial, smart_json_dict))
+        if 'end_bench' in request.form:
+            end_bench = True
+        else:
+            end_bench = False
+        prediction_queue.put_nowait((username, serial, smart_json_dict, end_bench))  # noqa: E501
     return flask.jsonify({
             'status': 'ok',
         })
@@ -424,7 +435,7 @@ class PredictionWorkerThread(threading.Thread):
         with app.app_context():
             while True:
                 try:
-                    (username, serial, smart_json) = self.in_queue.get(block=True, timeout=0.1)  # noqa: E501
+                    (username, serial, smart_json, end_bench) = self.in_queue.get(block=True, timeout=0.1)  # noqa: E501
                 except queue.Empty:
                     continue
                 res = self.master_predictor.predict(smart_json)
@@ -453,6 +464,9 @@ class PredictionWorkerThread(threading.Thread):
                     old_response.created_at = datetime.now()
                 db.session.commit()
                 # print("Response for {:} updated".format(drive.serial_number))  # noqa: E501
+                if end_bench:
+                    elapsed = (datetime.now() - shared_timer).total_seconds()
+                    print("Processed requests in {:} seconds".format(elapsed))
 
 
 def _get_user_object(username, password=''):
