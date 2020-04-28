@@ -3,6 +3,8 @@ Hard Drive Condition Alert System
 
 Presentation video is available here: https://www.youtube.com/watch?v=UAZBYhaxzM4
 
+Note: Code instrumented for benchmarking is available in `server-benchmark` branch of this repository.
+
 # Dependencies
 (In no particular order)
 - Server
